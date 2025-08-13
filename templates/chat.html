@@ -1,66 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chat - FastAPI Messenger</title>
+    <title>Chat</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        #chat-container {
-            display: none;
-        }
-        #init-screen {
-            text-align: center;
-            margin-top: 50px;
-        }
-        #messages {
-            height: 400px;
-            border: 1px solid #ddd;
-            padding: 10px;
-            overflow-y: scroll;
-            margin-bottom: 10px;
-        }
-        .message {
-            margin-bottom: 10px;
-            padding: 8px;
-            border-radius: 5px;
-        }
-        .received {
-            background: #e3f2fd;
-            text-align: left;
-        }
-        .sent {
-            background: #bbdefb;
-            text-align: right;
-        }
-        #message-form {
-            display: flex;
-            gap: 10px;
-        }
-        #message-input {
-            flex-grow: 1;
-            padding: 8px;
-        }
-        button {
-            padding: 8px 15px;
-            background: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #chat-container { display: none; }
+        #init-screen { text-align: center; margin-top: 50px; }
+        #messages { height: 400px; border: 1px solid #ddd; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
+        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
+        .received { background: #e3f2fd; text-align: left; }
+        .sent { background: #bbdefb; text-align: right; }
+        #message-form { display: flex; gap: 10px; }
+        #message-input { flex-grow: 1; padding: 8px; }
+        button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="init-screen">
-        <h2>Welcome to FastAPI Messenger</h2>
-        <p>Your ID: <strong id="user-id">{{ user_id }}</strong></p>
+        <h2>FastAPI Messenger</h2>
+        <p>Your ID: <strong>{{ user_id }}</strong></p>
         <div>
-            <input type="text" id="contact-id" placeholder="Enter contact ID">
-            <button onclick="initChat()">Start Chat</button>
+            <input type="text" id="contact-id" placeholder="Enter friend's ID">
+            <button onclick="startChat()">Start Chat</button>
         </div>
     </div>
 
@@ -79,7 +40,7 @@
         let ws;
         let currentContact = null;
 
-        function initChat() {
+        function startChat() {
             const contactId = document.getElementById("contact-id").value.trim();
             if (!contactId) return;
 
@@ -88,7 +49,7 @@
             document.getElementById("chat-container").style.display = "block";
             document.getElementById("contact-name").textContent = contactId;
 
-            // Connect WebSocket
+            // WebSocket соединение
             const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
             ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
@@ -96,11 +57,6 @@
                 const data = JSON.parse(event.data);
                 if (data.type === "message") {
                     displayMessage(data.from, data.message, data.from !== userId);
-                }
-                else if (data.type === "call_offer") {
-                    if (confirm(`Incoming call from ${data.from}. Accept?`)) {
-                        window.location.href = `/call/${data.call_id}`;
-                    }
                 }
             };
         }
@@ -113,20 +69,14 @@
                     to: currentContact,
                     message: input.value
                 }));
-                displayMessage(userId, input.value, true);
+                displayMessage(userId, input.value, false);
                 input.value = "";
             }
         }
 
         function startCall() {
             if (currentContact) {
-                const callId = `${userId}_${currentContact}`;
-                ws.send(JSON.stringify({
-                    type: "call_offer",
-                    to: currentContact,
-                    call_id: callId
-                }));
-                window.location.href = `/call/${callId}`;
+                window.location.href = `/call/${userId}_${currentContact}`;
             }
         }
 
@@ -139,7 +89,6 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // Send message on Enter key
         document.getElementById("message-input").addEventListener("keypress", (e) => {
             if (e.key === "Enter") sendMessage();
         });
