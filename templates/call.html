@@ -58,13 +58,51 @@
     <script>
         const callId = "{{ call_id }}";
         const userId = "{{ user_id }}";
+        const otherUserId = callId.split('_')[0] === userId ? callId.split('_')[1] : callId.split('_')[0];
         let peerConnection;
         let localStream;
         let isAudioMuted = false;
         let isVideoHidden = false;
+        let isCaller = callId.startsWith(userId + '_');
 
         // WebSocket соединение
-        const ws = new WebSocket(`wss://${window.location.host}/ws/${userId}`);
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
+
+        ws.onmessage = async (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "call_offer" && !isCaller) {
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+
+                    ws.send(JSON.stringify({
+                        type: "call_answer",
+                        to: data.from,
+                        call_id: callId,
+                        answer: answer
+                    }));
+                } catch (error) {
+                    console.error("Error handling call offer:", error);
+                }
+            }
+            else if (data.type === "call_answer" && isCaller) {
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                } catch (error) {
+                    console.error("Error handling call answer:", error);
+                }
+            }
+            else if (data.type === "ice_candidate") {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (error) {
+                    console.error("Error adding ICE candidate:", error);
+                }
+            }
+        };
 
         async function initCall() {
             try {
@@ -95,7 +133,7 @@
                     if (event.candidate) {
                         ws.send(JSON.stringify({
                             type: "ice_candidate",
-                            to: callId.split('_')[0] === userId ? callId.split('_')[1] : callId.split('_')[0],
+                            to: otherUserId,
                             call_id: callId,
                             candidate: event.candidate
                         }));
@@ -103,17 +141,27 @@
                 };
 
                 peerConnection.ontrack = event => {
-                    document.getElementById("remoteVideo").srcObject = event.streams[0];
+                    const remoteVideo = document.getElementById("remoteVideo");
+                    if (!remoteVideo.srcObject) {
+                        remoteVideo.srcObject = event.streams[0];
+                    }
+                };
+
+                peerConnection.onconnectionstatechange = () => {
+                    if (peerConnection.connectionState === "disconnected" ||
+                        peerConnection.connectionState === "failed") {
+                        endCall();
+                    }
                 };
 
                 // Если инициатор звонка
-                if (callId.startsWith(userId + '_')) {
+                if (isCaller) {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
 
                     ws.send(JSON.stringify({
                         type: "call_offer",
-                        to: callId.split('_')[1],
+                        to: otherUserId,
                         call_id: callId,
                         offer: offer
                     }));
@@ -162,7 +210,7 @@
         }
 
         // Инициализация при загрузке
-        initCall();
+        window.addEventListener('load', initCall);
     </script>
 </body>
 </html>
