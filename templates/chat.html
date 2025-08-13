@@ -36,6 +36,16 @@
             z-index: 1000;
             text-align: center;
         }
+        .call-waiting {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body>
@@ -56,14 +66,20 @@
         <div id="message-form">
             <input type="text" id="message-input" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
-            <button onclick="startVideoCall()">Video Call</button>
+            <button onclick="initiateCall()">Video Call</button>
         </div>
+    </div>
+
+    <div id="waiting-notification" class="call-waiting" style="display: none;">
+        Waiting for answer...
+        <button onclick="cancelCall()" style="margin-left: 10px; background: #f44336;">Cancel</button>
     </div>
 
     <script>
         const userId = "{{ user_id }}";
         let ws;
         let currentContact = null;
+        let currentCallId = null;
         let callTimeout;
 
         function updateStatus(status) {
@@ -99,20 +115,27 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                console.log("Received data:", data);
                 
                 if (data.type === "message") {
                     displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
                 }
-                else if (data.type === "call_request") {
-                    showCallNotification(data.from, data.call_id);
+                else if (data.type === "call_incoming") {
+                    showIncomingCall(data.from, data.call_id);
                 }
-                else if (data.type === "call_response") {
-                    handleCallResponse(data);
+                else if (data.type === "call_waiting") {
+                    showWaitingNotification(data.call_id);
+                }
+                else if (data.type === "call_accepted") {
+                    handleCallAccepted(data.call_id);
+                }
+                else if (data.type === "call_rejected") {
+                    handleCallRejected(data.by);
                 }
             };
         }
 
-        function showCallNotification(from, callId) {
+        function showIncomingCall(from, callId) {
             const notification = document.createElement('div');
             notification.className = 'call-notification';
             notification.innerHTML = `
@@ -125,13 +148,21 @@
             document.body.appendChild(notification);
         }
 
+        function showWaitingNotification(callId) {
+            currentCallId = callId;
+            document.getElementById('waiting-notification').style.display = 'block';
+            
+            callTimeout = setTimeout(() => {
+                alert("Call timed out. No answer from recipient.");
+                document.getElementById('waiting-notification').style.display = 'none';
+            }, 30000);
+        }
+
         function acceptCall(callId) {
             document.querySelector('.call-notification').remove();
             ws.send(JSON.stringify({
-                type: "call_response",
-                to: currentContact,
-                call_id: callId,
-                response: "accepted"
+                type: "call_accept",
+                call_id: callId
             }));
             window.location.href = `/call/${callId}`;
         }
@@ -139,23 +170,35 @@
         function rejectCall(callId) {
             document.querySelector('.call-notification').remove();
             ws.send(JSON.stringify({
-                type: "call_response",
-                to: currentContact,
-                call_id: callId,
-                response: "rejected"
+                type: "call_reject",
+                call_id: callId
             }));
         }
 
-        function handleCallResponse(data) {
-            clearTimeout(callTimeout);
-            if (data.response === "accepted") {
-                window.location.href = `/call/${data.call_id}`;
-            } else {
-                alert(`${currentContact} rejected your call`);
+        function cancelCall() {
+            if (currentCallId) {
+                ws.send(JSON.stringify({
+                    type: "call_reject",
+                    call_id: currentCallId
+                }));
+                document.getElementById('waiting-notification').style.display = 'none';
+                clearTimeout(callTimeout);
             }
         }
 
-        function startVideoCall() {
+        function handleCallAccepted(callId) {
+            clearTimeout(callTimeout);
+            document.getElementById('waiting-notification').style.display = 'none';
+            window.location.href = `/call/${callId}`;
+        }
+
+        function handleCallRejected(by) {
+            clearTimeout(callTimeout);
+            document.getElementById('waiting-notification').style.display = 'none';
+            alert(`${by} declined your call`);
+        }
+
+        function initiateCall() {
             if (!currentContact) {
                 alert("Please select a contact first");
                 return;
@@ -167,19 +210,10 @@
                 return;
             }
 
-            const callId = `${userId}_${currentContact}_${Date.now()}`;
-            
             ws.send(JSON.stringify({
-                type: "call_request",
-                to: currentContact,
-                call_id: callId
+                type: "call_initiate",
+                to: currentContact
             }));
-
-            alert(`Calling ${currentContact}...`);
-            
-            callTimeout = setTimeout(() => {
-                alert("Call timed out. No answer from recipient.");
-            }, 30000);
         }
 
         function startChat() {
