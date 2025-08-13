@@ -1,167 +1,219 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from datetime import datetime
-import os
-import uuid
-import json
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #chat-container { display: none; }
+        #init-screen { text-align: center; margin-top: 50px; }
+        #messages { height: 400px; border: 1px solid #ddd; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
+        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; position: relative; }
+        .received { background: #e3f2fd; text-align: left; }
+        .sent { background: #bbdefb; text-align: right; }
+        .message-status { font-size: 0.8em; color: #666; margin-top: 2px; }
+        #message-form { display: flex; gap: 10px; }
+        #message-input { flex-grow: 1; padding: 8px; }
+        button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #connection-status { 
+            position: fixed; 
+            top: 10px; 
+            right: 10px; 
+            padding: 5px 10px; 
+            border-radius: 3px; 
+            font-size: 0.9em;
+        }
+        .connected { background: #4CAF50; color: white; }
+        .disconnected { background: #f44336; color: white; }
+        .reconnecting { background: #FFC107; color: black; }
+    </style>
+</head>
+<body>
+    <div id="connection-status" class="disconnected">Disconnected</div>
+    
+    <div id="init-screen">
+        <h2>FastAPI Messenger</h2>
+        <p>Your ID: <strong>{{ user_id }}</strong></p>
+        <div>
+            <input type="text" id="contact-id" placeholder="Enter friend's ID">
+            <button onclick="startChat()">Start Chat</button>
+        </div>
+    </div>
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+    <div id="chat-container">
+        <h3>Chat with <span id="contact-name"></span></h3>
+        <div id="messages"></div>
+        <div id="message-form">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button onclick="sendMessage()">Send</button>
+            <button onclick="startCall()">Video Call</button>
+        </div>
+    </div>
 
+    <script>
+        const userId = "{{ user_id }}";
+        let ws;
+        let currentContact = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const reconnectDelay = 3000; // 3 seconds
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections = {}
-        self.call_offers = {}
+        function updateConnectionStatus(status) {
+            const statusElement = document.getElementById("connection-status");
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            statusElement.className = status;
+        }
 
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        self.active_connections[user_id] = websocket
-        print(f"User {user_id} connected. Active connections: {list(self.active_connections.keys())}")
+        function connectWebSocket() {
+            updateConnectionStatus("reconnecting");
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
-    async def send_message(self, sender: str, receiver: str, message: str):
-        print(f"Attempting to send message from {sender} to {receiver}")
-        if receiver in self.active_connections:
-            try:
-                await self.active_connections[receiver].send_json({
-                    "type": "message",
-                    "from": sender,
-                    "message": message,
-                    "timestamp": str(datetime.now())
-                })
-                print(f"Message sent successfully to {receiver}")
-                return True
-            except Exception as e:
-                print(f"Error sending message to {receiver}: {str(e)}")
-                del self.active_connections[receiver]
-                return False
-        else:
-            print(f"Receiver {receiver} not found in active connections")
-            return False
+            ws.onopen = () => {
+                console.log("WebSocket connection established");
+                updateConnectionStatus("connected");
+                reconnectAttempts = 0;
+                
+                if (currentContact) {
+                    // При переподключении сообщаем серверу о текущем чате
+                    ws.send(JSON.stringify({
+                        type: "reconnect",
+                        user_id: userId,
+                        current_contact: currentContact
+                    }));
+                }
+            };
 
-    async def send_call_offer(self, from_user: str, to_user: str, call_id: str, offer: dict = None):
-        if to_user in self.active_connections:
-            await self.active_connections[to_user].send_json({
-                "type": "call_offer",
-                "from": from_user,
-                "call_id": call_id,
-                "offer": offer
-            })
+            ws.onclose = (event) => {
+                console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
+                updateConnectionStatus("disconnected");
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    console.log(`Reconnecting in ${reconnectDelay/1000} seconds...`);
+                    setTimeout(connectWebSocket, reconnectDelay);
+                    reconnectAttempts++;
+                }
+            };
 
-    async def send_call_answer(self, from_user: str, to_user: str, call_id: str, answer: dict):
-        if to_user in self.active_connections:
-            await self.active_connections[to_user].send_json({
-                "type": "call_answer",
-                "from": from_user,
-                "call_id": call_id,
-                "answer": answer
-            })
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                updateConnectionStatus("disconnected");
+            };
 
-    async def send_ice_candidate(self, from_user: str, to_user: str, call_id: str, candidate: dict):
-        if to_user in self.active_connections:
-            await self.active_connections[to_user].send_json({
-                "type": "ice_candidate",
-                "from": from_user,
-                "call_id": call_id,
-                "candidate": candidate
-            })
+            ws.onmessage = (event) => {
+                console.log("Message received:", event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === "message") {
+                        displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
+                    }
+                    else if (data.type === "message_status" && data.status === "delivered") {
+                        updateMessageStatus(data.to, data.timestamp);
+                    }
+                } catch (e) {
+                    console.error("Error parsing message:", e);
+                }
+            };
+        }
 
-    def disconnect(self, user_id: str):
-        if user_id in self.active_connections:
-            del self.active_connections[user_id]
-            print(f"User {user_id} disconnected. Active connections: {list(self.active_connections.keys())}")
+        function startChat() {
+            const contactId = document.getElementById("contact-id").value.trim();
+            if (!contactId) {
+                alert("Please enter contact ID");
+                return;
+            }
 
+            if (contactId === userId) {
+                alert("You can't chat with yourself!");
+                return;
+            }
 
-manager = ConnectionManager()
+            currentContact = contactId;
+            document.getElementById("init-screen").style.display = "none";
+            document.getElementById("chat-container").style.display = "block";
+            document.getElementById("contact-name").textContent = contactId;
+            document.getElementById("messages").innerHTML = "";
 
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+            }
+        }
 
-@app.get("/")
-async def home():
-    user_id = str(uuid.uuid4())[:8]
-    return RedirectResponse(url=f"/chat/{user_id}")
+        function sendMessage() {
+            const input = document.getElementById("message-input");
+            const message = input.value.trim();
+            
+            if (!message) return;
+            if (!currentContact) {
+                alert("Please select a contact first");
+                return;
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Connection lost. Trying to reconnect...");
+                connectWebSocket();
+                return;
+            }
 
+            try {
+                const messageId = Date.now().toString();
+                ws.send(JSON.stringify({
+                    type: "message",
+                    to: currentContact,
+                    message: message,
+                    message_id: messageId
+                }));
+                
+                displayMessage(userId, message, false, new Date().toISOString(), messageId);
+                input.value = "";
+                input.focus();
+            } catch (e) {
+                console.error("Error sending message:", e);
+                alert("Failed to send message. Trying to reconnect...");
+                connectWebSocket();
+            }
+        }
 
-@app.get("/chat/{user_id}", response_class=HTMLResponse)
-async def chat(request: Request, user_id: str):
-    return templates.TemplateResponse("chat.html", {
-        "request": request,
-        "user_id": user_id
-    })
+        function displayMessage(sender, message, isReceived, timestamp, messageId = null) {
+            const messagesDiv = document.getElementById("messages");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
+            
+            if (messageId) {
+                messageDiv.id = `msg-${messageId}`;
+            }
+            
+            const time = new Date(timestamp).toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <strong>${sender}:</strong> ${message}
+                <div class="message-status">${time} • ${isReceived ? 'received' : 'sent'}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
 
+        function updateMessageStatus(to, timestamp) {
+            // Здесь можно обновить статус сообщения как "доставлено"
+            console.log(`Message to ${to} delivered at ${timestamp}`);
+        }
 
-@app.get("/call/{call_id}", response_class=HTMLResponse)
-async def call(request: Request, call_id: str):
-    return templates.TemplateResponse("call.html", {
-        "request": request,
-        "call_id": call_id,
-        "user_id": call_id.split("_")[0]
-    })
+        function startCall() {
+            if (currentContact) {
+                window.location.href = `/call/${userId}_${currentContact}`;
+            } else {
+                alert("Please select a contact first");
+            }
+        }
 
+        document.getElementById("message-input").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
 
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await manager.connect(websocket, user_id)
-    try:
-        while True:
-            data = await websocket.receive_json()
-            print(f"Received data from {user_id}: {data}")
-
-            if data["type"] == "message":
-                success = await manager.send_message(
-                    sender=user_id,
-                    receiver=data["to"],
-                    message=data["message"]
-                )
-                if success:
-                    await websocket.send_json({
-                        "type": "message_status",
-                        "status": "delivered",
-                        "to": data["to"],
-                        "timestamp": str(datetime.now())
-                    })
-
-            elif data["type"] == "call_offer":
-                call_id = f"{user_id}_{data['to']}"
-                await manager.send_call_offer(
-                    from_user=user_id,
-                    to_user=data["to"],
-                    call_id=call_id,
-                    offer=data.get("offer")
-                )
-
-            elif data["type"] == "call_answer":
-                await manager.send_call_answer(
-                    from_user=user_id,
-                    to_user=data["to"],
-                    call_id=data["call_id"],
-                    answer=data["answer"]
-                )
-
-            elif data["type"] == "ice_candidate":
-                await manager.send_ice_candidate(
-                    from_user=user_id,
-                    to_user=data["to"],
-                    call_id=data["call_id"],
-                    candidate=data["candidate"]
-                )
-
-    except WebSocketDisconnect:
-        manager.disconnect(user_id)
-    except json.JSONDecodeError:
-        print(f"Invalid JSON received from {user_id}")
-    except Exception as e:
-        print(f"Error with {user_id}: {str(e)}")
-        manager.disconnect(user_id)
-
-
-def run_server():
-    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
-    port = int(os.environ.get("PORT", 8080))
-
-    import uvicorn
-    uvicorn.run(app, host=host, port=port)
-
-
-if __name__ == "__main__":
-    run_server()
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>
