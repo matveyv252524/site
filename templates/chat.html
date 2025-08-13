@@ -7,28 +7,19 @@
         #chat-container { display: none; }
         #init-screen { text-align: center; margin-top: 50px; }
         #messages { height: 400px; border: 1px solid #ddd; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
-        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; position: relative; }
+        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
         .received { background: #e3f2fd; text-align: left; }
         .sent { background: #bbdefb; text-align: right; }
-        .message-status { font-size: 0.8em; color: #666; margin-top: 2px; }
+        .timestamp { font-size: 0.8em; color: #666; margin-top: 2px; }
         #message-form { display: flex; gap: 10px; }
         #message-input { flex-grow: 1; padding: 8px; }
         button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #connection-status { 
-            position: fixed; 
-            top: 10px; 
-            right: 10px; 
-            padding: 5px 10px; 
-            border-radius: 3px; 
-            font-size: 0.9em;
-        }
-        .connected { background: #4CAF50; color: white; }
-        .disconnected { background: #f44336; color: white; }
-        .reconnecting { background: #FFC107; color: black; }
+        #connection-status { position: fixed; top: 10px; right: 10px; padding: 5px 10px; 
+                           border-radius: 3px; font-size: 0.9em; background: #f44336; color: white; }
     </style>
 </head>
 <body>
-    <div id="connection-status" class="disconnected">Disconnected</div>
+    <div id="connection-status">Disconnected</div>
     
     <div id="init-screen">
         <h2>FastAPI Messenger</h2>
@@ -53,66 +44,43 @@
         const userId = "{{ user_id }}";
         let ws;
         let currentContact = null;
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 5;
-        const reconnectDelay = 3000; // 3 seconds
 
-        function updateConnectionStatus(status) {
+        function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
-            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-            statusElement.className = status;
+            statusElement.textContent = status;
+            statusElement.style.background = status === "Connected" ? "#4CAF50" : "#f44336";
         }
 
         function connectWebSocket() {
-            updateConnectionStatus("reconnecting");
-            
             const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
             ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
             ws.onopen = () => {
-                console.log("WebSocket connection established");
-                updateConnectionStatus("connected");
-                reconnectAttempts = 0;
-                
+                updateStatus("Connected");
                 if (currentContact) {
-                    // При переподключении сообщаем серверу о текущем чате
+                    // Notify server about reconnection
                     ws.send(JSON.stringify({
                         type: "reconnect",
                         user_id: userId,
-                        current_contact: currentContact
+                        contact_id: currentContact
                     }));
                 }
             };
 
-            ws.onclose = (event) => {
-                console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
-                updateConnectionStatus("disconnected");
-                
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    console.log(`Reconnecting in ${reconnectDelay/1000} seconds...`);
-                    setTimeout(connectWebSocket, reconnectDelay);
-                    reconnectAttempts++;
-                }
+            ws.onclose = () => {
+                updateStatus("Disconnected");
+                setTimeout(connectWebSocket, 3000);
             };
 
             ws.onerror = (error) => {
                 console.error("WebSocket error:", error);
-                updateConnectionStatus("disconnected");
+                updateStatus("Error");
             };
 
             ws.onmessage = (event) => {
-                console.log("Message received:", event.data);
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.type === "message") {
-                        displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
-                    }
-                    else if (data.type === "message_status" && data.status === "delivered") {
-                        updateMessageStatus(data.to, data.timestamp);
-                    }
-                } catch (e) {
-                    console.error("Error parsing message:", e);
+                const data = JSON.parse(event.data);
+                if (data.type === "message") {
+                    displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
                 }
             };
         }
@@ -150,52 +118,38 @@
                 return;
             }
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Connection lost. Trying to reconnect...");
+                alert("Connection lost. Reconnecting...");
                 connectWebSocket();
                 return;
             }
 
             try {
-                const messageId = Date.now().toString();
                 ws.send(JSON.stringify({
                     type: "message",
                     to: currentContact,
-                    message: message,
-                    message_id: messageId
+                    message: message
                 }));
-                
-                displayMessage(userId, message, false, new Date().toISOString(), messageId);
+                displayMessage(userId, message, false, new Date().toISOString());
                 input.value = "";
-                input.focus();
             } catch (e) {
                 console.error("Error sending message:", e);
-                alert("Failed to send message. Trying to reconnect...");
-                connectWebSocket();
+                alert("Failed to send message");
             }
         }
 
-        function displayMessage(sender, message, isReceived, timestamp, messageId = null) {
+        function displayMessage(sender, message, isReceived, timestamp) {
             const messagesDiv = document.getElementById("messages");
             const messageDiv = document.createElement("div");
             messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
             
-            if (messageId) {
-                messageDiv.id = `msg-${messageId}`;
-            }
-            
             const time = new Date(timestamp).toLocaleTimeString();
             messageDiv.innerHTML = `
                 <strong>${sender}:</strong> ${message}
-                <div class="message-status">${time} • ${isReceived ? 'received' : 'sent'}</div>
+                <div class="timestamp">${time}</div>
             `;
             
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        function updateMessageStatus(to, timestamp) {
-            // Здесь можно обновить статус сообщения как "доставлено"
-            console.log(`Message to ${to} delivered at ${timestamp}`);
         }
 
         function startCall() {
@@ -206,13 +160,12 @@
             }
         }
 
-        document.getElementById("message-input").addEventListener("keypress", (e) => {
-            if (e.key === "Enter") sendMessage();
-        });
-
-        // Инициализация при загрузке
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
+            document.getElementById("message-input").addEventListener("keypress", (e) => {
+                if (e.key === "Enter") sendMessage();
+            });
         });
     </script>
 </body>
