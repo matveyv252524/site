@@ -12,12 +12,15 @@ templates = Jinja2Templates(directory="templates")
 class ConnectionManager:
     def __init__(self):
         self.active_connections = {}
-        self.call_offers = {}
+        self.pending_calls = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
-        print(f"User {user_id} connected. Active connections: {list(self.active_connections.keys())}")
+        print(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
 
     async def send_json(self, receiver_id: str, message: dict):
         if receiver_id in self.active_connections:
@@ -73,26 +76,43 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "timestamp": str(datetime.now())
                 })
 
-            elif data["type"] == "call_request":
-                # Сохраняем информацию о звонке
-                manager.call_offers[data["call_id"]] = {
+            elif data["type"] == "call_initiate":
+                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
+                manager.pending_calls[call_id] = {
                     "from": user_id,
-                    "to": data["to"]
+                    "to": data["to"],
+                    "status": "waiting"
                 }
                 await manager.send_json(data["to"], {
-                    "type": "call_request",
+                    "type": "call_incoming",
                     "from": user_id,
-                    "call_id": data["call_id"]
+                    "call_id": call_id
+                })
+                await websocket.send_json({
+                    "type": "call_waiting",
+                    "call_id": call_id,
+                    "to": data["to"]
                 })
 
-            elif data["type"] == "call_response":
-                call_info = manager.call_offers.get(data["call_id"])
-                if call_info:
-                    await manager.send_json(call_info["from"], {
-                        "type": "call_response",
-                        "call_id": data["call_id"],
-                        "response": data["response"]
+            elif data["type"] == "call_accept":
+                call_id = data["call_id"]
+                if call_id in manager.pending_calls:
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                        "type": "call_accepted",
+                        "call_id": call_id,
+                        "by": user_id
                     })
+                    del manager.pending_calls[call_id]
+
+            elif data["type"] == "call_reject":
+                call_id = data["call_id"]
+                if call_id in manager.pending_calls:
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                        "type": "call_rejected",
+                        "call_id": call_id,
+                        "by": user_id
+                    })
+                    del manager.pending_calls[call_id]
 
             elif data["type"] == "webrtc_offer":
                 await manager.send_json(data["to"], {
