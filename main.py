@@ -1,37 +1,32 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from typing import Dict
 import os
 import uuid
+import json
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 
+# Менеджер соединений для хранения активных WebSocket подключений
 class ConnectionManager:
     def __init__(self):
-        self.active_connections = {}
-        self.call_offers = {}
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.call_offers: Dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
 
-    async def send_message(self, sender: str, receiver: str, message: str):
-        if receiver in self.active_connections:
-            await self.active_connections[receiver].send_json({
-                "type": "message",
-                "from": sender,
-                "message": message
-            })
-
-    async def send_call_offer(self, from_user: str, to_user: str, call_id: str):
-        if to_user in self.active_connections:
-            await self.active_connections[to_user].send_json({
-                "type": "call_offer",
-                "from": from_user,
-                "call_id": call_id
-            })
+    async def send_personal_message(self, message: dict, user_id: str):
+        if user_id in self.active_connections:
+            try:
+                await self.active_connections[user_id].send_json(message)
+            except Exception as e:
+                print(f"Error sending message to {user_id}: {e}")
+                self.disconnect(user_id)
 
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
@@ -41,14 +36,17 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+# Маршруты
 @app.get("/")
 async def home():
+    """Главная страница с перенаправлением на чат"""
     user_id = str(uuid.uuid4())[:8]
     return RedirectResponse(url=f"/chat/{user_id}")
 
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
+    """Страница чата"""
     return templates.TemplateResponse("chat.html", {
         "request": request,
         "user_id": user_id
@@ -57,6 +55,7 @@ async def chat(request: Request, user_id: str):
 
 @app.get("/call/{call_id}", response_class=HTMLResponse)
 async def call(request: Request, call_id: str):
+    """Страница видеозвонка"""
     return templates.TemplateResponse("call.html", {
         "request": request,
         "call_id": call_id,
@@ -64,39 +63,72 @@ async def call(request: Request, call_id: str):
     })
 
 
+# WebSocket endpoint
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """Обработчик WebSocket соединений"""
     await manager.connect(websocket, user_id)
     try:
         while True:
+            # Получаем и обрабатываем сообщения
             data = await websocket.receive_json()
 
-            if data["type"] == "message":
-                await manager.send_message(
-                    sender=user_id,
-                    receiver=data["to"],
-                    message=data["message"]
-                )
+            # Обработка текстовых сообщений
+            if data.get("type") == "message":
+                await manager.send_personal_message({
+                    "type": "message",
+                    "from": user_id,
+                    "message": data["message"]
+                }, data["to"])
 
-            elif data["type"] == "call_offer":
+            # Обработка предложения звонка (offer)
+            elif data.get("type") == "offer":
                 call_id = f"{user_id}_{data['to']}"
-                await manager.send_call_offer(
-                    from_user=user_id,
-                    to_user=data["to"],
-                    call_id=call_id
-                )
+                manager.call_offers[call_id] = data["offer"]
+                await manager.send_personal_message({
+                    "type": "call_offer",
+                    "from": user_id,
+                    "offer": data["offer"],
+                    "call_id": call_id
+                }, data["to"])
+
+            # Обработка ответа на звонок (answer)
+            elif data.get("type") == "answer":
+                await manager.send_personal_message({
+                    "type": "answer",
+                    "answer": data["answer"],
+                    "call_id": data["call_id"]
+                }, data["to"])
+
+            # Обработка ICE кандидатов
+            elif data.get("type") == "ice_candidate":
+                await manager.send_personal_message({
+                    "type": "ice_candidate",
+                    "candidate": data["candidate"],
+                    "call_id": data["call_id"]
+                }, data["to"])
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+        print(f"User {user_id} disconnected")
+    except json.JSONDecodeError:
+        print(f"Invalid JSON received from {user_id}")
+    except Exception as e:
+        print(f"Unexpected error with {user_id}: {e}")
+        manager.disconnect(user_id)
 
 
-def run_server():
-    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
-    port = int(os.environ.get("PORT", 8080))
-
-    import uvicorn
-    uvicorn.run(app, host=host, port=port)
-
-
+# Запуск сервера
 if __name__ == "__main__":
-    run_server()
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 10000))
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        workers=1,
+        timeout_keep_alive=30,
+        log_level="info"
+    )
