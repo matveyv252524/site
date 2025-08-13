@@ -1,14 +1,11 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import os
 import uuid
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
 
 class ConnectionManager:
     def __init__(self):
@@ -39,15 +36,12 @@ class ConnectionManager:
         if user_id in self.active_connections:
             del self.active_connections[user_id]
 
-
 manager = ConnectionManager()
 
-
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+@app.get("/")
+async def home():
     user_id = str(uuid.uuid4())[:8]
     return RedirectResponse(url=f"/chat/{user_id}")
-
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
@@ -55,7 +49,6 @@ async def chat(request: Request, user_id: str):
         "request": request,
         "user_id": user_id
     })
-
 
 @app.get("/call/{call_id}", response_class=HTMLResponse)
 async def call(request: Request, call_id: str):
@@ -65,21 +58,20 @@ async def call(request: Request, call_id: str):
         "user_id": call_id.split("_")[0]
     })
 
-
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
     try:
         while True:
             data = await websocket.receive_json()
-
+            
             if data["type"] == "message":
                 await manager.send_message(
                     sender=user_id,
                     receiver=data["to"],
                     message=data["message"]
                 )
-
+                
             elif data["type"] == "call_offer":
                 call_id = f"{user_id}_{data['to']}"
                 await manager.send_call_offer(
@@ -87,12 +79,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     to_user=data["to"],
                     call_id=call_id
                 )
-
+                
     except WebSocketDisconnect:
         manager.disconnect(user_id)
 
+def run_server():
+    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
+    port = int(os.environ.get("PORT", 8080))
+    
+    import uvicorn
+    uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    run_server()
