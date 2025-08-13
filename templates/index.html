@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Welcome to FastAPI Messenger</h2>
+    <p>Your user ID: <strong>{{ user_id }}</strong></p>
+    <a href="/chat/{{ user_id }}" class="btn">Start Chatting</a>
+
+    <script>
+        // Generate a random user ID if not provided
+        if (!"{{ user_id }}") {
+            const userId = Math.random().toString(36).substring(2, 10);
+            window.location.href = `/${userId}`;
+        }
+    </script>
+{% endblock %}

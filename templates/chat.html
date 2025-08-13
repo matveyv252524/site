@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - FastAPI Messenger</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: #4285f4;
+            color: white;
+            padding: 10px 0;
+            margin-bottom: 20px;
+        }
+        header h1 {
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            background: #4285f4;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .chat-container {
+            display: flex;
+            height: 70vh;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .contacts {
+            width: 30%;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .message-input {
+            padding: 10px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+        .message-input input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .received {
+            background: #e9e9e9;
+            align-self: flex-start;
+        }
+        .sent {
+            background: #4285f4;
+            color: white;
+            align-self: flex-end;
+        }
+        .user-id {
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        .contact {
+            padding: 8px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .contact:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>FastAPI Messenger</h1>
+        </div>
+    </header>
+    <div class="container">
+        <div class="user-id">Your ID: <strong>{{ user_id }}</strong></div>
+
+        <div class="chat-container">
+            <div class="contacts">
+                <h3>Contacts</h3>
+                <div id="contact-list">
+                    <!-- Контакты будут добавляться здесь -->
+                </div>
+            </div>
+            <div class="chat-area">
+                <div class="messages" id="messages">
+                    <!-- Сообщения будут появляться здесь -->
+                </div>
+                <div class="message-input">
+                    <input type="text" id="message-input" placeholder="Type a message...">
+                    <button id="send-button" class="btn">Send</button>
+                    <button id="start-call-btn" class="btn">Start Call</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const userId = "{{ user_id }}";
+        const ws = new WebSocket(`ws://${window.location.host}/ws/${userId}`);
+
+        // Элементы интерфейса
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const startCallBtn = document.getElementById('start-call-btn');
+        const messagesDiv = document.getElementById('messages');
+        const contactList = document.getElementById('contact-list');
+
+        // Обработчики событий
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        startCallBtn.addEventListener('click', () => {
+            const recipientId = prompt("Enter recipient ID:");
+            if (recipientId) {
+                const callId = `${userId}_${recipientId}`;
+                window.location.href = `/call/${callId}`;
+            }
+        });
+
+        // Обработчик сообщений WebSocket
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "message") {
+                displayMessage(data.from, data.message, false);
+            }
+            else if (data.type === "incoming_call") {
+                if (confirm(`Incoming call from ${data.from}. Accept?`)) {
+                    window.location.href = `/call/${data.call_id}`;
+                }
+            }
+        };
+
+        // Отправка сообщения
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                const recipientId = prompt("Enter recipient ID:");
+                if (recipientId) {
+                    ws.send(JSON.stringify({
+                        type: "message",
+                        to: recipientId,
+                        message: message
+                    }));
+                    displayMessage(userId, message, true);
+                    messageInput.value = '';
+                    addContact(recipientId);
+                }
+            }
+        }
+
+        // Отображение сообщения
+        function displayMessage(sender, message, isSent) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+            messageDiv.textContent = `${sender}: ${message}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Добавление контакта
+        function addContact(contactId) {
+            const existing = Array.from(contactList.children).some(
+                el => el.textContent === contactId
+            );
+            if (!existing) {
+                const contactDiv = document.createElement('div');
+                contactDiv.className = 'contact';
+                contactDiv.textContent = contactId;
+                contactDiv.addEventListener('click', () => {
+                    if (confirm(`Start call with ${contactId}?`)) {
+                        const callId = `${userId}_${contactId}`;
+                        window.location.href = `/call/${callId}`;
+                    }
+                });
+                contactList.appendChild(contactDiv);
+            }
+        }
+
+        // При загрузке страницы добавляем обработчик для демонстрации
+        window.addEventListener('DOMContentLoaded', () => {
+            // Пример контакта (в реальном приложении нужно получать из базы данных)
+            addContact('user2');
+        });
+    </script>
+</body>
+</html>
