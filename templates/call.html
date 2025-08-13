@@ -3,52 +3,25 @@
 <head>
     <title>Video Call</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
-        }
-        #video-container {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin: 20px 0;
-        }
-        video {
-            width: 45%;
-            max-width: 500px;
-            background: #000;
-            border-radius: 8px;
-        }
-        #localVideo {
-            transform: scaleX(-1);
-        }
-        .controls {
-            margin-top: 20px;
-        }
-        button {
-            padding: 10px 20px;
-            margin: 0 5px;
-            background: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        #endCall {
-            background: #f44336;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        #video-container { display: flex; justify-content: center; gap: 20px; margin: 20px 0; }
+        video { width: 45%; max-width: 500px; background: #000; border-radius: 8px; }
+        #localVideo { transform: scaleX(-1); max-height: 300px; }
+        #remoteVideo { max-height: 400px; }
+        .controls { margin-top: 20px; }
+        button { padding: 10px 20px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #endCall { background: #f44336; }
     </style>
 </head>
 <body>
     <h2>Video Call</h2>
     <p>Call ID: {{ call_id }}</p>
-    
+
     <div id="video-container">
         <video id="localVideo" autoplay muted playsinline></video>
         <video id="remoteVideo" autoplay playsinline></video>
     </div>
-    
+
     <div class="controls">
         <button id="endCall">End Call</button>
         <button id="toggleAudio">Mute</button>
@@ -58,111 +31,150 @@
     <script>
         const callId = "{{ call_id }}";
         const userId = "{{ user_id }}";
+        const otherUserId = callId.split('_')[0] === userId ? callId.split('_')[1] : callId.split('_')[0];
         let peerConnection;
         let localStream;
-        let isAudioMuted = false;
-        let isVideoHidden = false;
-        
+
         // WebSocket соединение
-        const ws = new WebSocket(`wss://${window.location.host}/ws/${userId}`);
-        
-        async function initCall() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const ws = new WebSocket(`${wsProtocol}${window.location.host}/ws/${userId}`);
+
+        // Конфигурация ICE серверов (обязательно добавьте свои TURN серверы)
+        const iceServers = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" },
+                {
+                    urls: "turn:your_turn_server.com",
+                    username: "your_username",
+                    credential: "your_password"
+                }
+            ]
+        };
+
+        async function setupCall() {
             try {
-                // Получаем медиапоток
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: true, 
-                    audio: true 
+                // Получаем доступ к медиаустройствам
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
                 });
                 document.getElementById("localVideo").srcObject = localStream;
-                
-                // Настройка WebRTC
-                const configuration = {
-                    iceServers: [
-                        { urls: "stun:stun.l.google.com:19302" },
-                        { urls: "stun:stun1.l.google.com:19302" }
-                    ]
-                };
-                
-                peerConnection = new RTCPeerConnection(configuration);
-                
-                // Добавляем треки
+
+                // Создаем PeerConnection
+                peerConnection = new RTCPeerConnection(iceServers);
+
+                // Добавляем локальные треки
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
-                
-                // Обработчики событий
-                peerConnection.onicecandidate = event => {
-                    if (event.candidate) {
+
+                // Обработка ICE кандидатов
+                peerConnection.onicecandidate = ({ candidate }) => {
+                    if (candidate) {
                         ws.send(JSON.stringify({
                             type: "ice_candidate",
-                            to: callId.split('_')[0] === userId ? callId.split('_')[1] : callId.split('_')[0],
+                            to: otherUserId,
                             call_id: callId,
-                            candidate: event.candidate
+                            candidate: candidate
                         }));
                     }
                 };
-                
-                peerConnection.ontrack = event => {
-                    document.getElementById("remoteVideo").srcObject = event.streams[0];
+
+                // Получаем удаленный поток
+                peerConnection.ontrack = ({ streams: [stream] }) => {
+                    document.getElementById("remoteVideo").srcObject = stream;
                 };
-                
-                // Если инициатор звонка
+
+                // Обработка входящих сообщений
+                ws.onmessage = async ({ data }) => {
+                    const message = JSON.parse(data);
+
+                    if (message.type === "offer" && message.call_id === callId) {
+                        await peerConnection.setRemoteDescription(
+                            new RTCSessionDescription(message.offer)
+                        );
+
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+
+                        ws.send(JSON.stringify({
+                            type: "answer",
+                            to: otherUserId,
+                            call_id: callId,
+                            answer: answer
+                        }));
+                    }
+                    else if (message.type === "answer" && message.call_id === callId) {
+                        await peerConnection.setRemoteDescription(
+                            new RTCSessionDescription(message.answer)
+                        );
+                    }
+                    else if (message.type === "ice_candidate" && message.call_id === callId) {
+                        try {
+                            await peerConnection.addIceCandidate(
+                                new RTCIceCandidate(message.candidate)
+                            );
+                        } catch (err) {
+                            console.error("Error adding ICE candidate:", err);
+                        }
+                    }
+                };
+
+                // Если мы инициатор звонка
                 if (callId.startsWith(userId + '_')) {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
-                    
+
                     ws.send(JSON.stringify({
-                        type: "call_offer",
-                        to: callId.split('_')[1],
+                        type: "offer",
+                        to: otherUserId,
                         call_id: callId,
                         offer: offer
                     }));
                 }
-                
-            } catch (error) {
-                console.error("Error initializing call:", error);
-                alert("Could not access camera/microphone");
-                window.location.href = `/chat/${userId}`;
+
+            } catch (err) {
+                console.error("Call setup error:", err);
+                endCall();
             }
         }
-        
+
         // Управление звонком
+        function toggleAudio() {
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                document.getElementById("toggleAudio").textContent =
+                    track.enabled ? "Mute" : "Unmute";
+            }
+        }
+
+        function toggleVideo() {
+            if (localStream) {
+                localStream.getVideoTracks().forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                document.getElementById("toggleVideo").textContent =
+                    track.enabled ? "Hide Video" : "Show Video";
+            }
+        }
+
+        function endCall() {
+            if (peerConnection) peerConnection.close();
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            window.location.href = `/chat/${userId}`;
+        }
+
+        // Инициализация
         document.getElementById("endCall").addEventListener("click", endCall);
         document.getElementById("toggleAudio").addEventListener("click", toggleAudio);
         document.getElementById("toggleVideo").addEventListener("click", toggleVideo);
-        
-        function toggleAudio() {
-            if (localStream) {
-                const audioTracks = localStream.getAudioTracks();
-                audioTracks.forEach(track => {
-                    track.enabled = !track.enabled;
-                });
-                isAudioMuted = !isAudioMuted;
-                document.getElementById("toggleAudio").textContent = 
-                    isAudioMuted ? "Unmute" : "Mute";
-            }
-        }
-        
-        function toggleVideo() {
-            if (localStream) {
-                const videoTracks = localStream.getVideoTracks();
-                videoTracks.forEach(track => {
-                    track.enabled = !track.enabled;
-                });
-                isVideoHidden = !isVideoHidden;
-                document.getElementById("toggleVideo").textContent = 
-                    isVideoHidden ? "Show Video" : "Hide Video";
-            }
-        }
-        
-        function endCall() {
-            if (peerConnection) peerConnection.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-            window.location.href = `/chat/${userId}`;
-        }
-        
-        // Инициализация при загрузке
-        initCall();
+
+        setupCall();
     </script>
 </body>
 </html>
