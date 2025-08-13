@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import os
 import uuid
-import json
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -69,12 +68,33 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "timestamp": str(datetime.now())
                 })
 
+            elif data["type"] == "initiate_call":
+                # Генерируем уникальный ID звонка
+                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
+                await manager.send_json(data["to"], {
+                    "type": "call_invitation",
+                    "from": user_id,
+                    "call_id": call_id
+                })
+                # Отправляем инициатору подтверждение
+                await websocket.send_json({
+                    "type": "call_initiated",
+                    "call_id": call_id,
+                    "to": data["to"]
+                })
+
+            elif data["type"] == "accept_call":
+                await manager.send_json(data["to"], {
+                    "type": "call_accepted",
+                    "call_id": data["call_id"],
+                    "from": user_id
+                })
+
             elif data["type"] == "call_offer":
-                call_id = f"{user_id}_{data['to']}"
                 await manager.send_json(data["to"], {
                     "type": "call_offer",
                     "from": user_id,
-                    "call_id": call_id,
+                    "call_id": data["call_id"],
                     "offer": data["offer"]
                 })
 
@@ -99,6 +119,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     except Exception as e:
         print(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
+
 
 if __name__ == "__main__":
     import uvicorn
