@@ -14,13 +14,33 @@
         #message-form { display: flex; gap: 10px; }
         #message-input { flex-grow: 1; padding: 8px; }
         button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #connection-status { position: fixed; top: 10px; right: 10px; padding: 5px 10px; 
-                           border-radius: 3px; font-size: 0.9em; background: #f44336; color: white; }
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            background: #f44336;
+            color: white;
+        }
+        .call-notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div id="connection-status">Disconnected</div>
-    
+
     <div id="init-screen">
         <h2>FastAPI Messenger</h2>
         <p>Your ID: <strong>{{ user_id }}</strong></p>
@@ -36,7 +56,7 @@
         <div id="message-form">
             <input type="text" id="message-input" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
-            <button onclick="startCall()">Video Call</button>
+            <button onclick="initiateCall()">Video Call</button>
         </div>
     </div>
 
@@ -44,6 +64,7 @@
         const userId = "{{ user_id }}";
         let ws;
         let currentContact = null;
+        let callTimeout;
 
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
@@ -58,7 +79,6 @@
             ws.onopen = () => {
                 updateStatus("Connected");
                 if (currentContact) {
-                    // Notify server about reconnection
                     ws.send(JSON.stringify({
                         type: "reconnect",
                         user_id: userId,
@@ -79,10 +99,77 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+
                 if (data.type === "message") {
                     displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
                 }
+                else if (data.type === "call_invitation") {
+                    showCallNotification(data.from, data.call_id);
+                }
+                else if (data.type === "call_accepted") {
+                    clearTimeout(callTimeout);
+                    window.location.href = `/call/${data.call_id}`;
+                }
+                else if (data.type === "call_rejected") {
+                    clearTimeout(callTimeout);
+                    alert(`${data.from} rejected your call`);
+                }
             };
+        }
+
+        function showCallNotification(from, callId) {
+            const notification = document.createElement('div');
+            notification.className = 'call-notification';
+            notification.innerHTML = `
+                <h3>Incoming call from ${from}</h3>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                    <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Accept</button>
+                    <button onclick="rejectCall('${callId}', '${from}')" style="background: #f44336;">Reject</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+        }
+
+        function acceptCall(callId) {
+            document.querySelector('.call-notification').remove();
+            ws.send(JSON.stringify({
+                type: "accept_call",
+                to: currentContact,
+                call_id: callId
+            }));
+            window.location.href = `/call/${callId}`;
+        }
+
+        function rejectCall(callId, from) {
+            document.querySelector('.call-notification').remove();
+            ws.send(JSON.stringify({
+                type: "reject_call",
+                to: from,
+                call_id: callId
+            }));
+        }
+
+        function initiateCall() {
+            if (!currentContact) {
+                alert("Please select a contact first");
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Connection lost. Reconnecting...");
+                connectWebSocket();
+                return;
+            }
+
+            // Устанавливаем таймаут 30 секунд на ожидание ответа
+            callTimeout = setTimeout(() => {
+                alert("Call timed out. No answer from recipient.");
+            }, 30000);
+
+            ws.send(JSON.stringify({
+                type: "initiate_call",
+                to: currentContact
+            }));
         }
 
         function startChat() {
@@ -111,7 +198,7 @@
         function sendMessage() {
             const input = document.getElementById("message-input");
             const message = input.value.trim();
-            
+
             if (!message) return;
             if (!currentContact) {
                 alert("Please select a contact first");
@@ -141,23 +228,15 @@
             const messagesDiv = document.getElementById("messages");
             const messageDiv = document.createElement("div");
             messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
-            
+
             const time = new Date(timestamp).toLocaleTimeString();
             messageDiv.innerHTML = `
                 <strong>${sender}:</strong> ${message}
                 <div class="timestamp">${time}</div>
             `;
-            
+
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        function startCall() {
-            if (currentContact) {
-                window.location.href = `/call/${userId}_${currentContact}`;
-            } else {
-                alert("Please select a contact first");
-            }
         }
 
         // Initialize
