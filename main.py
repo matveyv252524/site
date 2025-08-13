@@ -25,12 +25,31 @@ class ConnectionManager:
                 "message": message
             })
 
-    async def send_call_offer(self, from_user: str, to_user: str, call_id: str):
+    async def send_call_offer(self, from_user: str, to_user: str, call_id: str, offer: dict = None):
         if to_user in self.active_connections:
             await self.active_connections[to_user].send_json({
                 "type": "call_offer",
                 "from": from_user,
-                "call_id": call_id
+                "call_id": call_id,
+                "offer": offer
+            })
+
+    async def send_call_answer(self, from_user: str, to_user: str, call_id: str, answer: dict):
+        if to_user in self.active_connections:
+            await self.active_connections[to_user].send_json({
+                "type": "call_answer",
+                "from": from_user,
+                "call_id": call_id,
+                "answer": answer
+            })
+
+    async def send_ice_candidate(self, from_user: str, to_user: str, call_id: str, candidate: dict):
+        if to_user in self.active_connections:
+            await self.active_connections[to_user].send_json({
+                "type": "ice_candidate",
+                "from": from_user,
+                "call_id": call_id,
+                "candidate": candidate
             })
 
     def disconnect(self, user_id: str):
@@ -83,7 +102,24 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await manager.send_call_offer(
                     from_user=user_id,
                     to_user=data["to"],
-                    call_id=call_id
+                    call_id=call_id,
+                    offer=data.get("offer")
+                )
+
+            elif data["type"] == "call_answer":
+                await manager.send_call_answer(
+                    from_user=user_id,
+                    to_user=data["to"],
+                    call_id=data["call_id"],
+                    answer=data["answer"]
+                )
+
+            elif data["type"] == "ice_candidate":
+                await manager.send_ice_candidate(
+                    from_user=user_id,
+                    to_user=data["to"],
+                    call_id=data["call_id"],
+                    candidate=data["candidate"]
                 )
 
     except WebSocketDisconnect:
