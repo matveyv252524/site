@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import os
 import uuid
+import json
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -16,14 +17,18 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
-        print(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+        print(f"User {user_id} connected. Active connections: {list(self.active_connections.keys())}")
 
     async def send_json(self, receiver_id: str, message: dict):
         if receiver_id in self.active_connections:
-            await self.active_connections[receiver_id].send_json(message)
+            try:
+                await self.active_connections[receiver_id].send_json(message)
+                return True
+            except Exception as e:
+                print(f"Error sending to {receiver_id}: {str(e)}")
+                del self.active_connections[receiver_id]
+                return False
+        return False
 
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
@@ -68,39 +73,38 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "timestamp": str(datetime.now())
                 })
 
-            elif data["type"] == "initiate_call":
-                # Генерируем уникальный ID звонка
-                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
-                await manager.send_json(data["to"], {
-                    "type": "call_invitation",
+            elif data["type"] == "call_request":
+                # Сохраняем информацию о звонке
+                manager.call_offers[data["call_id"]] = {
                     "from": user_id,
-                    "call_id": call_id
-                })
-                # Отправляем инициатору подтверждение
-                await websocket.send_json({
-                    "type": "call_initiated",
-                    "call_id": call_id,
                     "to": data["to"]
+                }
+                await manager.send_json(data["to"], {
+                    "type": "call_request",
+                    "from": user_id,
+                    "call_id": data["call_id"]
                 })
 
-            elif data["type"] == "accept_call":
-                await manager.send_json(data["to"], {
-                    "type": "call_accepted",
-                    "call_id": data["call_id"],
-                    "from": user_id
-                })
+            elif data["type"] == "call_response":
+                call_info = manager.call_offers.get(data["call_id"])
+                if call_info:
+                    await manager.send_json(call_info["from"], {
+                        "type": "call_response",
+                        "call_id": data["call_id"],
+                        "response": data["response"]
+                    })
 
-            elif data["type"] == "call_offer":
+            elif data["type"] == "webrtc_offer":
                 await manager.send_json(data["to"], {
-                    "type": "call_offer",
+                    "type": "webrtc_offer",
                     "from": user_id,
                     "call_id": data["call_id"],
                     "offer": data["offer"]
                 })
 
-            elif data["type"] == "call_answer":
+            elif data["type"] == "webrtc_answer":
                 await manager.send_json(data["to"], {
-                    "type": "call_answer",
+                    "type": "webrtc_answer",
                     "from": user_id,
                     "call_id": data["call_id"],
                     "answer": data["answer"]
@@ -119,7 +123,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     except Exception as e:
         print(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
-
 
 if __name__ == "__main__":
     import uvicorn
