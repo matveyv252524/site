@@ -74,11 +74,11 @@
     <script>
         const callId = "{{ call_id }}";
         const userId = "{{ user_id }}";
-        const participants = callId.split('_');
-        const otherUserId = participants[0] === userId ? participants[1] : participants[0];
+        const parts = callId.split('_');
+        const otherUserId = parts[0] === userId ? parts[1] : parts[0];
         let peerConnection;
         let localStream;
-        let isCaller = participants[0] === userId;
+        let isCaller = parts[0] === userId;
 
         // WebSocket connection
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -86,7 +86,7 @@
 
         function updateStatus(status) {
             document.getElementById("connection-status").textContent = status;
-            document.getElementById("connection-status").style.background =
+            document.getElementById("connection-status").style.background = 
                 status === "Connected" ? "#4CAF50" : "#f44336";
         }
 
@@ -140,6 +140,7 @@
                 if (candidate) {
                     ws.send(JSON.stringify({
                         type: "ice_candidate",
+                        from: userId,
                         to: otherUserId,
                         call_id: callId,
                         candidate: candidate.toJSON()
@@ -172,9 +173,10 @@
                 try {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
-
+                    
                     ws.send(JSON.stringify({
-                        type: "call_offer",
+                        type: "webrtc_offer",
+                        from: userId,
                         to: otherUserId,
                         call_id: callId,
                         offer: peerConnection.localDescription.toJSON()
@@ -189,21 +191,22 @@
         // WebSocket message handler
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
-
-            if (data.type === "call_offer" && !isCaller) {
+            
+            if (data.type === "webrtc_offer" && !isCaller) {
                 await setupMedia();
                 createPeerConnection();
-
+                
                 try {
                     await peerConnection.setRemoteDescription(
                         new RTCSessionDescription(data.offer)
                     );
-
+                    
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
-
+                    
                     ws.send(JSON.stringify({
-                        type: "call_answer",
+                        type: "webrtc_answer",
+                        from: userId,
                         to: data.from,
                         call_id: callId,
                         answer: peerConnection.localDescription.toJSON()
@@ -213,7 +216,7 @@
                     endCall();
                 }
             }
-            else if (data.type === "call_answer" && isCaller) {
+            else if (data.type === "webrtc_answer" && isCaller) {
                 try {
                     await peerConnection.setRemoteDescription(
                         new RTCSessionDescription(data.answer)
@@ -241,7 +244,7 @@
                 const audioTracks = localStream.getAudioTracks();
                 const isMuted = !audioTracks[0].enabled;
                 audioTracks.forEach(track => track.enabled = isMuted);
-                document.getElementById("toggleAudio").textContent =
+                document.getElementById("toggleAudio").textContent = 
                     isMuted ? "Mute" : "Unmute";
             }
         });
@@ -250,7 +253,7 @@
                 const videoTracks = localStream.getVideoTracks();
                 const isHidden = !videoTracks[0].enabled;
                 videoTracks.forEach(track => track.enabled = !isHidden);
-                document.getElementById("toggleVideo").textContent =
+                document.getElementById("toggleVideo").textContent = 
                     isHidden ? "Hide Video" : "Show Video";
             }
         });
