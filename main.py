@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import os
 import uuid
@@ -41,8 +42,8 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-@app.get("/")
-async def home():
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
     user_id = str(uuid.uuid4())[:8]
     return RedirectResponse(url=f"/chat/{user_id}")
 
@@ -90,13 +91,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         manager.disconnect(user_id)
 
 
-def run_server():
-    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
-    port = int(os.environ.get("PORT", 8080))
-
-    import uvicorn
-    uvicorn.run(app, host=host, port=port)
-
-
 if __name__ == "__main__":
-    run_server()
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
