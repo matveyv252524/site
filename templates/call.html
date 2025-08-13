@@ -38,9 +38,21 @@
         #endCall {
             background: #f44336;
         }
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .connected { background: #4CAF50; color: white; }
+        .disconnected { background: #f44336; color: white; }
     </style>
 </head>
 <body>
+    <div id="connection-status" class="disconnected">Disconnected</div>
+    
     <h2>Video Call</h2>
     <p>Call ID: {{ call_id }}</p>
 
@@ -65,42 +77,71 @@
         let isVideoHidden = false;
         let isCaller = callId.startsWith(userId + '_');
 
+        function updateConnectionStatus(status) {
+            const statusElement = document.getElementById("connection-status");
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            statusElement.className = status;
+        }
+
         // WebSocket соединение
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
         const ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
+        ws.onopen = () => {
+            console.log("WebSocket connection established for call");
+            updateConnectionStatus("connected");
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed");
+            updateConnectionStatus("disconnected");
+            endCall();
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+            updateConnectionStatus("disconnected");
+        };
+
         ws.onmessage = async (event) => {
-            const data = JSON.parse(event.data);
-
-            if (data.type === "call_offer" && !isCaller) {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-
-                    ws.send(JSON.stringify({
-                        type: "call_answer",
-                        to: data.from,
-                        call_id: callId,
-                        answer: answer
-                    }));
-                } catch (error) {
-                    console.error("Error handling call offer:", error);
+            console.log("Call message received:", event.data);
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === "call_offer" && !isCaller) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        
+                        ws.send(JSON.stringify({
+                            type: "call_answer",
+                            to: data.from,
+                            call_id: callId,
+                            answer: answer
+                        }));
+                    } catch (error) {
+                        console.error("Error handling call offer:", error);
+                        endCall();
+                    }
                 }
-            }
-            else if (data.type === "call_answer" && isCaller) {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                } catch (error) {
-                    console.error("Error handling call answer:", error);
+                else if (data.type === "call_answer" && isCaller) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    } catch (error) {
+                        console.error("Error handling call answer:", error);
+                        endCall();
+                    }
                 }
-            }
-            else if (data.type === "ice_candidate") {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (error) {
-                    console.error("Error adding ICE candidate:", error);
+                else if (data.type === "ice_candidate") {
+                    try {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    } catch (error) {
+                        console.error("Error adding ICE candidate:", error);
+                    }
                 }
+            } catch (e) {
+                console.error("Error parsing call message:", e);
             }
         };
 
@@ -148,7 +189,8 @@
                 };
 
                 peerConnection.onconnectionstatechange = () => {
-                    if (peerConnection.connectionState === "disconnected" ||
+                    console.log("Connection state:", peerConnection.connectionState);
+                    if (peerConnection.connectionState === "disconnected" || 
                         peerConnection.connectionState === "failed") {
                         endCall();
                     }
@@ -169,7 +211,7 @@
 
             } catch (error) {
                 console.error("Error initializing call:", error);
-                alert("Could not access camera/microphone");
+                alert("Could not access camera/microphone. Please check your permissions.");
                 window.location.href = `/chat/${userId}`;
             }
         }
@@ -204,13 +246,25 @@
         }
 
         function endCall() {
-            if (peerConnection) peerConnection.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
             window.location.href = `/chat/${userId}`;
         }
 
         // Инициализация при загрузке
         window.addEventListener('load', initCall);
+
+        // Обработка закрытия страницы
+        window.addEventListener('beforeunload', endCall);
     </script>
 </body>
 </html>
