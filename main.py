@@ -4,7 +4,11 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import os
 import uuid
-import json
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -17,10 +21,7 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
-        print(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+        logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
 
     async def send_json(self, receiver_id: str, message: dict):
         if receiver_id in self.active_connections:
@@ -28,15 +29,16 @@ class ConnectionManager:
                 await self.active_connections[receiver_id].send_json(message)
                 return True
             except Exception as e:
-                print(f"Error sending to {receiver_id}: {str(e)}")
+                logger.error(f"Error sending to {receiver_id}: {str(e)}")
                 del self.active_connections[receiver_id]
                 return False
+        logger.warning(f"Receiver {receiver_id} not connected")
         return False
 
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
             del self.active_connections[user_id]
-            print(f"User {user_id} disconnected")
+            logger.info(f"User {user_id} disconnected")
 
 manager = ConnectionManager()
 
@@ -66,7 +68,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     try:
         while True:
             data = await websocket.receive_json()
-            print(f"Received from {user_id}: {data}")
+            logger.info(f"Received from {user_id}: {data}")
 
             if data["type"] == "message":
                 await manager.send_json(data["to"], {
@@ -76,7 +78,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "timestamp": str(datetime.now())
                 })
 
-            elif data["type"] == "call_initiate":
+            elif data["type"] == "call_request":
                 call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
                 manager.pending_calls[call_id] = {
                     "from": user_id,
@@ -86,7 +88,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await manager.send_json(data["to"], {
                     "type": "call_incoming",
                     "from": user_id,
-                    "call_id": call_id
+                    "call_id": call_id,
+                    "is_audio_only": True
                 })
                 await websocket.send_json({
                     "type": "call_waiting",
@@ -119,7 +122,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "type": "webrtc_offer",
                     "from": user_id,
                     "call_id": data["call_id"],
-                    "offer": data["offer"]
+                    "offer": data["offer"],
+                    "is_audio_only": True
                 })
 
             elif data["type"] == "webrtc_answer":
@@ -141,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     except WebSocketDisconnect:
         manager.disconnect(user_id)
     except Exception as e:
-        print(f"Error with {user_id}: {str(e)}")
+        logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
 
 if __name__ == "__main__":
