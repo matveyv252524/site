@@ -124,7 +124,7 @@
                     displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
                 }
                 else if (data.type === "call_incoming") {
-                    showIncomingCall(data.from, data.call_id, data.is_audio_only);
+                    showIncomingCall(data.from, data.call_id);
                 }
                 else if (data.type === "call_waiting") {
                     showWaitingNotification(data.call_id);
@@ -138,7 +138,7 @@
             };
         }
 
-        function showIncomingCall(from, callId, isAudioOnly) {
+        function showIncomingCall(from, callId) {
             const notification = document.createElement('div');
             notification.className = 'call-notification';
             notification.innerHTML = `
