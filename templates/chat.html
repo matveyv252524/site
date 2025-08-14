@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Audio Chat</title>
+    <title>Аудио чат</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
+        body {
+            font-family: Arial, sans-serif;
             margin: 0;
             display: flex;
             height: 100vh;
@@ -56,13 +56,13 @@
             border-radius: 5px;
             max-width: 70%;
         }
-        .received { 
-            background: #e3f2fd; 
-            text-align: left; 
+        .received {
+            background: #e3f2fd;
+            text-align: left;
         }
-        .sent { 
-            background: #bbdefb; 
-            text-align: right; 
+        .sent {
+            background: #bbdefb;
+            text-align: right;
             margin-left: auto;
         }
         .timestamp {
@@ -154,14 +154,14 @@
     <div id="sidebar">
         <div id="user-info">
             <h3>{{ username }}</h3>
-            <a href="/logout" style="color: #f44336; text-decoration: none;">Logout</a>
+            <a href="/logout" style="color: #f44336; text-decoration: none;">Выйти</a>
         </div>
-        
+
         <div id="contacts-header">
-            <h3>Contacts</h3>
-            <button onclick="showNewContactModal()">+ New</button>
+            <h3>Контакты</h3>
+            <button onclick="showNewContactModal()">+ Добавить</button>
         </div>
-        
+
         <div id="contacts-list">
             {% for contact in contacts %}
             <div class="contact" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
@@ -172,30 +172,30 @@
     </div>
 
     <div id="chat-container">
-        <div id="connection-status">Disconnected</div>
-        
-        <h3 id="current-contact">Select a contact to chat</h3>
+        <div id="connection-status">Отключено</div>
+
+        <h3 id="current-contact">Выберите контакт для чата</h3>
         <div id="messages"></div>
-        
+
         <div id="message-form">
-            <input type="text" id="message-input" placeholder="Type your message..." disabled>
-            <button onclick="sendMessage()" disabled id="send-btn">Send</button>
-            <button onclick="startAudioCall()" disabled id="call-btn">Audio Call</button>
+            <input type="text" id="message-input" placeholder="Введите сообщение..." disabled>
+            <button onclick="sendMessage()" disabled id="send-btn">Отправить</button>
+            <button onclick="startAudioCall()" disabled id="call-btn">Аудио звонок</button>
         </div>
     </div>
 
     <div id="new-contact-modal">
-        <h3>Add New Contact</h3>
-        <input type="text" id="contact-username" placeholder="Enter username (e.g. #username)">
+        <h3>Добавить новый контакт</h3>
+        <input type="text" id="contact-username" placeholder="Введите имя (например, #username)">
         <div style="display: flex; gap: 10px;">
-            <button onclick="addContact()">Add</button>
-            <button onclick="hideNewContactModal()" style="background: #f44336;">Cancel</button>
+            <button onclick="addContact()">Добавить</button>
+            <button onclick="hideNewContactModal()" style="background: #f44336;">Отмена</button>
         </div>
     </div>
 
     <div id="waiting-notification" class="call-waiting" style="display: none;">
-        Waiting for answer...
-        <button onclick="cancelCall()" style="margin-left: 10px; background: #f44336;">Cancel</button>
+        Ожидание ответа...
+        <button onclick="cancelCall()" style="margin-left: 10px; background: #f44336;">Отмена</button>
     </div>
 
     <script>
@@ -209,7 +209,7 @@
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
             statusElement.textContent = status;
-            statusElement.style.background = status === "Connected" ? "#4CAF50" : "#f44336";
+            statusElement.style.background = status === "Подключено" ? "#4CAF50" : "#f44336";
         }
 
         function connectWebSocket() {
@@ -217,23 +217,23 @@
             ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
             ws.onopen = () => {
-                updateStatus("Connected");
-                console.log("WebSocket connected");
+                updateStatus("Подключено");
+                console.log("WebSocket подключен");
             };
 
             ws.onclose = () => {
-                updateStatus("Disconnected");
-                console.log("WebSocket disconnected, reconnecting...");
+                updateStatus("Отключено");
+                console.log("WebSocket отключен, переподключение...");
                 setTimeout(connectWebSocket, 3000);
             };
 
             ws.onerror = (error) => {
-                console.error("WebSocket error:", error);
-                updateStatus("Error");
+                console.error("Ошибка WebSocket:", error);
+                updateStatus("Ошибка");
             };
 
             ws.onmessage = (event) => {
-                console.log("WebSocket message received:", event.data);
+                console.log("Получено сообщение WebSocket:", event.data);
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message") {
@@ -256,19 +256,19 @@
 
         function selectContact(contactId, contactName) {
             currentContact = contactId;
-            document.getElementById("current-contact").textContent = `Chat with ${contactName}`;
+            document.getElementById("current-contact").textContent = `Чат с ${contactName}`;
             document.getElementById("message-input").disabled = false;
             document.getElementById("send-btn").disabled = false;
             document.getElementById("call-btn").disabled = false;
-            
+
             // Удаляем активный класс у всех контактов
             document.querySelectorAll('.contact').forEach(el => {
                 el.classList.remove('active');
             });
-            
+
             // Добавляем активный класс выбранному контакту
             event.target.classList.add('active');
-            
+
             // Очищаем сообщения и загружаем историю чата
             document.getElementById("messages").innerHTML = "";
             loadMessageHistory(contactId);
@@ -278,7 +278,7 @@
             try {
                 const response = await fetch(`/get-messages?user_id=${userId}&contact_id=${contactId}`);
                 const messages = await response.json();
-                
+
                 messages.forEach(msg => {
                     const isReceived = msg.sender_id != userId;
                     displayMessage(
@@ -289,7 +289,7 @@
                     );
                 });
             } catch (error) {
-                console.error("Error loading message history:", error);
+                console.error("Ошибка загрузки истории сообщений:", error);
             }
         }
 
@@ -304,7 +304,7 @@
         async function addContact() {
             const contactUsername = document.getElementById("contact-username").value.trim();
             if (!contactUsername) return;
-            
+
             try {
                 const response = await fetch('/add-contact', {
                     method: 'POST',
@@ -316,7 +316,7 @@
                         contact_username: contactUsername
                     })
                 });
-                
+
                 const result = await response.json();
                 if (result.success) {
                     // Обновляем список контактов
@@ -328,14 +328,14 @@
                         selectContact(result.contact_id, result.contact_username);
                     };
                     contactsList.appendChild(newContact);
-                    
+
                     hideNewContactModal();
                 } else {
-                    alert(result.message || "Failed to add contact");
+                    alert(result.message || "Не удалось добавить контакт");
                 }
             } catch (error) {
-                console.error("Error adding contact:", error);
-                alert("Error adding contact");
+                console.error("Ошибка добавления контакта:", error);
+                alert("Ошибка добавления контакта");
             }
         }
 
@@ -344,7 +344,7 @@
             const message = input.value.trim();
 
             if (!message || !currentContact) return;
-            
+
             try {
                 ws.send(JSON.stringify({
                     type: "message",
@@ -354,8 +354,8 @@
                 displayMessage(username, message, false, new Date().toISOString());
                 input.value = "";
             } catch (e) {
-                console.error("Error sending message:", e);
-                alert("Failed to send message");
+                console.error("Ошибка отправки сообщения:", e);
+                alert("Не удалось отправить сообщение");
             }
         }
 
@@ -376,12 +376,12 @@
 
         function startAudioCall() {
             if (!currentContact) {
-                alert("Please select a contact first");
+                alert("Пожалуйста, выберите контакт сначала");
                 return;
             }
 
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Connection lost. Reconnecting...");
+                alert("Соединение потеряно. Переподключение...");
                 connectWebSocket();
                 return;
             }
@@ -397,10 +397,10 @@
             const notification = document.createElement('div');
             notification.className = 'call-notification';
             notification.innerHTML = `
-                <h3>Incoming audio call from ${from}</h3>
+                <h3>Входящий аудио звонок от ${from}</h3>
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                    <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Accept</button>
-                    <button onclick="rejectCall('${callId}')" style="background: #f44336;">Reject</button>
+                    <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Принять</button>
+                    <button onclick="rejectCall('${callId}')" style="background: #f44336;">Отклонить</button>
                 </div>
             `;
             document.body.appendChild(notification);
@@ -411,7 +411,7 @@
             document.getElementById('waiting-notification').style.display = 'block';
 
             callTimeout = setTimeout(() => {
-                alert("Call timed out. No answer from recipient.");
+                alert("Звонок отклонен. Получатель не ответил.");
                 hideWaitingNotification();
             }, 30000);
         }
@@ -455,17 +455,17 @@
 
         function handleCallRejected(by) {
             hideWaitingNotification();
-            alert(`${by} declined your call`);
+            alert(`${by} отклонил ваш звонок`);
         }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
-            
+
             document.getElementById("message-input").addEventListener("keypress", (e) => {
                 if (e.key === "Enter") sendMessage();
             });
-            
+
             // Проверяем, есть ли контакты, и выбираем первый, если есть
             const contacts = document.querySelectorAll('.contact');
             if (contacts.length > 0) {
