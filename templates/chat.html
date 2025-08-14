@@ -35,12 +35,20 @@
             margin-bottom: 5px;
             cursor: pointer;
             border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .contact:hover {
             background: #e9ecef;
         }
         .contact.active {
             background: #dee2e6;
+        }
+        .contact-remove {
+            color: #f44336;
+            cursor: pointer;
+            margin-left: 10px;
         }
         #messages {
             flex: 1;
@@ -112,6 +120,11 @@
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             z-index: 1000;
+            width: 300px;
+        }
+        #new-contact-modal h3 {
+            margin-top: 0;
+            text-align: center;
         }
         #new-contact-modal input {
             width: 100%;
@@ -148,6 +161,17 @@
             padding: 10px 20px;
             border-radius: 20px;
         }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .error-message {
+            color: #f44336;
+            font-size: 0.9em;
+            margin-top: 5px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -164,8 +188,9 @@
 
         <div id="contacts-list">
             {% for contact in contacts %}
-            <div class="contact" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
+            <div class="contact" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
                 {{ contact.username }}
+                <span class="contact-remove" onclick="removeContact(event, '{{ contact.id }}')">×</span>
             </div>
             {% endfor %}
         </div>
@@ -187,7 +212,8 @@
     <div id="new-contact-modal">
         <h3>Добавить новый контакт</h3>
         <input type="text" id="contact-username" placeholder="Введите имя (например, #username)">
-        <div style="display: flex; gap: 10px;">
+        <div id="contact-error" class="error-message"></div>
+        <div class="modal-buttons">
             <button onclick="addContact()">Добавить</button>
             <button onclick="hideNewContactModal()" style="background: #f44336;">Отмена</button>
         </div>
@@ -237,13 +263,14 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message") {
-                    // Проверяем, относится ли сообщение к текущему чату
                     const isCurrentChat = (data.from === currentContact || data.from === userId);
                     if (isCurrentChat) {
-                        displayMessage(data.from === userId ? username : data.from, 
-                                       data.message, 
-                                       data.from !== userId, 
-                                       data.timestamp);
+                        displayMessage(
+                            data.from === userId ? username : data.from, 
+                            data.message, 
+                            data.from !== userId, 
+                            data.timestamp
+                        );
                     }
                 }
                 else if (data.type === "call_incoming") {
@@ -274,7 +301,7 @@
             });
 
             // Добавляем активный класс выбранному контакту
-            event.target.classList.add('active');
+            event.currentTarget.classList.add('active');
 
             // Очищаем сообщения и загружаем историю чата
             document.getElementById("messages").innerHTML = "";
@@ -301,7 +328,10 @@
         }
 
         function showNewContactModal() {
+            document.getElementById("contact-username").value = "";
+            document.getElementById("contact-error").textContent = "";
             document.getElementById("new-contact-modal").style.display = 'block';
+            document.getElementById("contact-username").focus();
         }
 
         function hideNewContactModal() {
@@ -310,7 +340,13 @@
 
         async function addContact() {
             const contactUsername = document.getElementById("contact-username").value.trim();
-            if (!contactUsername) return;
+            const errorElement = document.getElementById("contact-error");
+            errorElement.textContent = "";
+
+            if (!contactUsername) {
+                errorElement.textContent = "Введите имя пользователя";
+                return;
+            }
 
             try {
                 const response = await fetch('/add-contact', {
@@ -325,24 +361,80 @@
                 });
 
                 const result = await response.json();
+                
                 if (result.success) {
                     // Обновляем список контактов
                     const contactsList = document.getElementById("contacts-list");
                     const newContact = document.createElement('div');
                     newContact.className = 'contact';
-                    newContact.textContent = result.contact_username;
+                    newContact.dataset.contactId = result.contact_id;
+                    newContact.innerHTML = `
+                        ${result.contact_username}
+                        <span class="contact-remove" onclick="removeContact(event, '${result.contact_id}')">×</span>
+                    `;
                     newContact.onclick = function() {
                         selectContact(result.contact_id, result.contact_username);
                     };
-                    contactsList.appendChild(newContact);
-
+                    
+                    // Добавляем новый контакт в начало списка
+                    contactsList.insertBefore(newContact, contactsList.firstChild);
+                    
+                    // Очищаем поле ввода и скрываем модальное окно
+                    document.getElementById("contact-username").value = "";
                     hideNewContactModal();
+                    
+                    // Выбираем новый контакт
+                    selectContact(result.contact_id, result.contact_username);
                 } else {
-                    alert(result.message || "Не удалось добавить контакт");
+                    errorElement.textContent = result.message || "Не удалось добавить контакт";
                 }
             } catch (error) {
                 console.error("Ошибка добавления контакта:", error);
-                alert("Ошибка добавления контакта");
+                errorElement.textContent = "Ошибка при добавлении контакта";
+            }
+        }
+
+        async function removeContact(event, contactId) {
+            event.stopPropagation(); // Предотвращаем срабатывание selectContact
+            
+            if (!confirm("Удалить контакт?")) return;
+
+            try {
+                const response = await fetch('/remove-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        contact_id: contactId
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Удаляем контакт из списка
+                    const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
+                    if (contactElement) {
+                        contactElement.remove();
+                    }
+                    
+                    // Если удаленный контакт был текущим, очищаем чат
+                    if (currentContact === contactId) {
+                        currentContact = null;
+                        document.getElementById("current-contact").textContent = "Выберите контакт для чата";
+                        document.getElementById("messages").innerHTML = "";
+                        document.getElementById("message-input").disabled = true;
+                        document.getElementById("send-btn").disabled = true;
+                        document.getElementById("call-btn").disabled = true;
+                    }
+                } else {
+                    alert(result.message || "Не удалось удалить контакт");
+                }
+            } catch (error) {
+                console.error("Ошибка удаления контакта:", error);
+                alert("Ошибка при удалении контакта");
             }
         }
 
