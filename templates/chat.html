@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chat</title>
+    <title>Audio Chat</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         #chat-container { display: none; }
@@ -14,22 +14,23 @@
         #message-form { display: flex; gap: 10px; }
         #message-input { flex-grow: 1; padding: 8px; }
         button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #connection-status { 
-            position: fixed; 
-            top: 10px; 
-            right: 10px; 
-            padding: 5px 10px; 
-            border-radius: 3px; 
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 3px;
             font-size: 0.9em;
-            background: #f44336; 
-            color: white; 
+            background: #f44336;
+            color: white;
         }
         .call-notification {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: white;
+            background: #4285f4;
+            color: white;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0,0,0,0.2);
@@ -50,9 +51,9 @@
 </head>
 <body>
     <div id="connection-status">Disconnected</div>
-    
+
     <div id="init-screen">
-        <h2>FastAPI Messenger</h2>
+        <h2>Audio Messenger</h2>
         <p>Your ID: <strong>{{ user_id }}</strong></p>
         <div>
             <input type="text" id="contact-id" placeholder="Enter friend's ID">
@@ -66,7 +67,7 @@
         <div id="message-form">
             <input type="text" id="message-input" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
-            <button onclick="initiateCall()">Video Call</button>
+            <button onclick="startAudioCall()">Audio Call</button>
         </div>
     </div>
 
@@ -94,6 +95,7 @@
 
             ws.onopen = () => {
                 updateStatus("Connected");
+                console.log("WebSocket connected");
                 if (currentContact) {
                     ws.send(JSON.stringify({
                         type: "reconnect",
@@ -105,6 +107,7 @@
 
             ws.onclose = () => {
                 updateStatus("Disconnected");
+                console.log("WebSocket disconnected, reconnecting...");
                 setTimeout(connectWebSocket, 3000);
             };
 
@@ -114,14 +117,14 @@
             };
 
             ws.onmessage = (event) => {
+                console.log("WebSocket message received:", event.data);
                 const data = JSON.parse(event.data);
-                console.log("Received data:", data);
-                
+
                 if (data.type === "message") {
                     displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
                 }
                 else if (data.type === "call_incoming") {
-                    showIncomingCall(data.from, data.call_id);
+                    showIncomingCall(data.from, data.call_id, data.is_audio_only);
                 }
                 else if (data.type === "call_waiting") {
                     showWaitingNotification(data.call_id);
@@ -135,11 +138,11 @@
             };
         }
 
-        function showIncomingCall(from, callId) {
+        function showIncomingCall(from, callId, isAudioOnly) {
             const notification = document.createElement('div');
             notification.className = 'call-notification';
             notification.innerHTML = `
-                <h3>Incoming call from ${from}</h3>
+                <h3>Incoming audio call from ${from}</h3>
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
                     <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Accept</button>
                     <button onclick="rejectCall('${callId}')" style="background: #f44336;">Reject</button>
@@ -151,11 +154,16 @@
         function showWaitingNotification(callId) {
             currentCallId = callId;
             document.getElementById('waiting-notification').style.display = 'block';
-            
+
             callTimeout = setTimeout(() => {
                 alert("Call timed out. No answer from recipient.");
-                document.getElementById('waiting-notification').style.display = 'none';
+                hideWaitingNotification();
             }, 30000);
+        }
+
+        function hideWaitingNotification() {
+            document.getElementById('waiting-notification').style.display = 'none';
+            clearTimeout(callTimeout);
         }
 
         function acceptCall(callId) {
@@ -181,29 +189,26 @@
                     type: "call_reject",
                     call_id: currentCallId
                 }));
-                document.getElementById('waiting-notification').style.display = 'none';
-                clearTimeout(callTimeout);
+                hideWaitingNotification();
             }
         }
 
         function handleCallAccepted(callId) {
-            clearTimeout(callTimeout);
-            document.getElementById('waiting-notification').style.display = 'none';
+            hideWaitingNotification();
             window.location.href = `/call/${callId}`;
         }
 
         function handleCallRejected(by) {
-            clearTimeout(callTimeout);
-            document.getElementById('waiting-notification').style.display = 'none';
+            hideWaitingNotification();
             alert(`${by} declined your call`);
         }
 
-        function initiateCall() {
+        function startAudioCall() {
             if (!currentContact) {
                 alert("Please select a contact first");
                 return;
             }
-            
+
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 alert("Connection lost. Reconnecting...");
                 connectWebSocket();
@@ -211,9 +216,12 @@
             }
 
             ws.send(JSON.stringify({
-                type: "call_initiate",
-                to: currentContact
+                type: "call_request",
+                to: currentContact,
+                is_audio_only: true
             }));
+
+            alert(`Starting audio call with ${currentContact}...`);
         }
 
         function startChat() {
@@ -242,7 +250,7 @@
         function sendMessage() {
             const input = document.getElementById("message-input");
             const message = input.value.trim();
-            
+
             if (!message) return;
             if (!currentContact) {
                 alert("Please select a contact first");
@@ -272,13 +280,13 @@
             const messagesDiv = document.getElementById("messages");
             const messageDiv = document.createElement("div");
             messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
-            
+
             const time = new Date(timestamp).toLocaleTimeString();
             messageDiv.innerHTML = `
                 <strong>${sender}:</strong> ${message}
                 <div class="timestamp">${time}</div>
             `;
-            
+
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
