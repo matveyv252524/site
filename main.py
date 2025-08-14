@@ -238,42 +238,49 @@ async def chat(request: Request, user_id: str):
 async def add_contact(request: Request):
     data = await request.json()
     user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username")
+    contact_username = data.get("contact_username").strip()  # Добавляем trim для username
 
+    # Проверка входных данных
     if not user_id or not contact_username:
-        return {"success": False, "message": "Invalid data"}
+        return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
 
+    # Проверка формата username
     if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
-        return {"success": False, "message": "Username must start with # and be 6-16 characters long"}
+        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
 
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
 
-        # Получаем username текущего пользователя для сравнения
+        # Получаем username текущего пользователя
         cursor.execute('SELECT username FROM users WHERE id = ?', (user_id,))
         current_user = cursor.fetchone()
+
         if not current_user:
-            return {"success": False, "message": "Current user not found"}
+            return {"success": False, "message": "Текущий пользователь не найден"}
+
+        current_username = current_user[0]
 
         # Проверяем, не пытается ли пользователь добавить себя
-        if contact_username == current_user[0]:
-            return {"success": False, "message": "You can't add yourself"}
+        if contact_username.lower() == current_username.lower():
+            return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-        # Проверяем существование контакта
+        # Ищем пользователя для добавления
         cursor.execute('SELECT id, username FROM users WHERE username = ?', (contact_username,))
         contact = cursor.fetchone()
+
         if not contact:
-            return {"success": False, "message": "User not found"}
+            return {"success": False, "message": "Пользователь не найден"}
 
         contact_id, contact_username = contact[0], contact[1]
 
-        # Проверяем, есть ли уже такой контакт
+        # Проверяем, не добавлен ли уже этот контакт
         cursor.execute('''
             SELECT id FROM contacts 
             WHERE user_id = ? AND contact_id = ?
         ''', (user_id, contact_id))
+
         if cursor.fetchone():
-            return {"success": False, "message": "Contact already exists"}
+            return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
 
         # Добавляем контакт
         try:
@@ -282,9 +289,22 @@ async def add_contact(request: Request):
                 VALUES (?, ?)
             ''', (user_id, contact_id))
             conn.commit()
-            return {"success": True, "contact_id": contact_id, "contact_username": contact_username}
+
+            # Добавляем обратную связь (если хотим двусторонние контакты)
+            # cursor.execute('''
+            #     INSERT OR IGNORE INTO contacts (user_id, contact_id)
+            #     VALUES (?, ?)
+            # ''', (contact_id, user_id))
+            # conn.commit()
+
+            return {
+                "success": True,
+                "contact_id": contact_id,
+                "contact_username": contact_username,
+                "message": "Контакт успешно добавлен"
+            }
         except sqlite3.Error as e:
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
 
 
 @app.get("/get-messages")
@@ -318,6 +338,23 @@ async def logout():
     response.delete_cookie("user_id")
     response.delete_cookie("username")
     return response
+
+
+@app.post("/remove-contact")
+async def remove_contact(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+    contact_id = int(data.get("contact_id"))
+
+    with sqlite3.connect('messenger.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM contacts 
+            WHERE user_id = ? AND contact_id = ?
+        ''', (user_id, contact_id))
+        conn.commit()
+
+        return {"success": True, "message": "Контакт успешно удален"}
 
 
 @app.websocket("/ws/{user_id}")
