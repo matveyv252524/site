@@ -451,60 +451,57 @@
         }
 
         async function addContact() {
-            const contactUsername = document.getElementById("contact-username").value.trim();
-            const errorElement = document.getElementById("contact-error");
-            errorElement.textContent = "";
+    const contactUsername = document.getElementById("contact-username").value.trim();
+    const errorElement = document.getElementById("contact-error");
+    errorElement.textContent = "";
 
-            if (!contactUsername) {
-                errorElement.textContent = "Введите имя пользователя";
-                return;
-            }
+    if (!contactUsername) {
+        errorElement.textContent = "Введите имя пользователя";
+        return;
+    }
 
-            try {
-                const response = await fetch('/add-contact', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        contact_username: contactUsername
-                    })
-                });
+    try {
+        const response = await fetch('/add-contact', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                contact_username: contactUsername
+            })
+        });
 
-                const result = await response.json();
-
-                if (result.success) {
-                    // Обновляем список контактов
-                    const contactsList = document.getElementById("contacts-list");
-                    const newContact = document.createElement('div');
-                    newContact.className = 'contact';
-                    newContact.dataset.contactId = result.contact_id;
-                    newContact.innerHTML = `
-                        ${result.contact_username}
-                        <span class="contact-remove" onclick="removeContact(event, '${result.contact_id}')">×</span>
-                    `;
-                    newContact.onclick = function() {
-                        selectContact(result.contact_id, result.contact_username);
-                    };
-
-                    // Добавляем новый контакт в начало списка
-                    contactsList.insertBefore(newContact, contactsList.firstChild);
-
-                    // Очищаем поле ввода и скрываем модальное окно
-                    document.getElementById("contact-username").value = "";
-                    hideNewContactModal();
-
-                    // Выбираем новый контакт
-                    selectContact(result.contact_id, result.contact_username);
-                } else {
-                    errorElement.textContent = result.message || "Не удалось добавить контакт";
-                }
-            } catch (error) {
-                console.error("Ошибка добавления контакта:", error);
-                errorElement.textContent = "Ошибка при добавлении контакта";
-            }
+        const result = await response.json();
+        
+        if (result.success) {
+            // Обновляем список контактов
+            const contactsList = document.getElementById("contacts-list");
+            const newContact = document.createElement('div');
+            newContact.className = 'contact';
+            newContact.dataset.contactId = result.contact_id;
+            newContact.innerHTML = `
+                ${result.contact_username}
+                <span class="contact-remove" onclick="removeContact(event, '${result.contact_id}')">×</span>
+            `;
+            newContact.onclick = function() {
+                selectContact(result.contact_id, result.contact_username);
+            };
+            
+            contactsList.insertBefore(newContact, contactsList.firstChild);
+            document.getElementById("contact-username").value = "";
+            hideNewContactModal();
+            
+            // Выбираем новый контакт
+            selectContact(result.contact_id, result.contact_username);
+        } else {
+            errorElement.textContent = result.message || "Не удалось добавить контакт";
         }
+    } catch (error) {
+        console.error("Ошибка добавления контакта:", error);
+        errorElement.textContent = "Ошибка при добавлении контакта";
+    }
+}
 
         async function removeContact(event, contactId) {
             event.stopPropagation(); // Предотвращаем срабатывание selectContact
