@@ -172,6 +172,41 @@
             margin-top: 5px;
             text-align: center;
         }
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #4285f4;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 300px;
+            cursor: pointer;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        .notification-close {
+            float: right;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .unread-badge {
+            background: #f44336;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -231,6 +266,7 @@
         let currentContact = null;
         let currentCallId = null;
         let callTimeout;
+        let unreadMessages = {};
 
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
@@ -263,15 +299,27 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message") {
-                    const isCurrentChat = (data.from === currentContact || data.from === userId);
+                    const isCurrentChat = (data.from === currentContact);
+
                     if (isCurrentChat) {
                         displayMessage(
-                            data.from === userId ? username : data.from, 
-                            data.message, 
-                            data.from !== userId, 
+                            data.from === userId ? username : data.from,
+                            data.message,
+                            data.from !== userId,
                             data.timestamp
                         );
+                    } else {
+                        // Если это не текущий чат, добавляем уведомление
+                        addUnreadBadge(data.from);
+
+                        // Показываем уведомление, если это не взаимный контакт
+                        if (!data.is_mutual) {
+                            showNotification(data.from, data.message);
+                        }
                     }
+                }
+                else if (data.type === "notification") {
+                    showNotification(data.from, data.message);
                 }
                 else if (data.type === "call_incoming") {
                     showIncomingCall(data.from, data.call_id);
@@ -288,6 +336,67 @@
             };
         }
 
+        function addUnreadBadge(contactId) {
+            if (!unreadMessages[contactId]) {
+                unreadMessages[contactId] = 0;
+            }
+            unreadMessages[contactId]++;
+
+            // Обновляем бейдж в списке контактов
+            const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
+            if (contactElement) {
+                let badge = contactElement.querySelector('.unread-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'unread-badge';
+                    contactElement.appendChild(badge);
+                }
+                badge.textContent = unreadMessages[contactId];
+            }
+        }
+
+        function clearUnreadBadge(contactId) {
+            if (unreadMessages[contactId]) {
+                delete unreadMessages[contactId];
+
+                const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
+                if (contactElement) {
+                    const badge = contactElement.querySelector('.unread-badge');
+                    if (badge) {
+                        badge.remove();
+                    }
+                }
+            }
+        }
+
+        function showNotification(from, message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.innerHTML = `
+                <span class="notification-close" onclick="this.parentElement.remove()">×</span>
+                <strong>Новое сообщение от #${from}</strong>
+                <p>${message.length > 50 ? message.substring(0, 50) + '...' : message}</p>
+            `;
+
+            notification.onclick = () => {
+                // При клике на уведомление открываем чат с этим пользователем
+                const contactElement = document.querySelector(`.contact[data-contact-id="${from}"]`);
+                if (contactElement) {
+                    contactElement.click();
+                }
+                notification.remove();
+            };
+
+            document.body.appendChild(notification);
+
+            // Автоматическое закрытие через 5 секунд
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
         function selectContact(contactId, contactName) {
             currentContact = contactId;
             document.getElementById("current-contact").textContent = `Чат с ${contactName}`;
@@ -302,6 +411,9 @@
 
             // Добавляем активный класс выбранному контакту
             event.currentTarget.classList.add('active');
+
+            // Очищаем непрочитанные сообщения для этого контакта
+            clearUnreadBadge(contactId);
 
             // Очищаем сообщения и загружаем историю чата
             document.getElementById("messages").innerHTML = "";
@@ -361,7 +473,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     // Обновляем список контактов
                     const contactsList = document.getElementById("contacts-list");
@@ -375,14 +487,14 @@
                     newContact.onclick = function() {
                         selectContact(result.contact_id, result.contact_username);
                     };
-                    
+
                     // Добавляем новый контакт в начало списка
                     contactsList.insertBefore(newContact, contactsList.firstChild);
-                    
+
                     // Очищаем поле ввода и скрываем модальное окно
                     document.getElementById("contact-username").value = "";
                     hideNewContactModal();
-                    
+
                     // Выбираем новый контакт
                     selectContact(result.contact_id, result.contact_username);
                 } else {
@@ -396,7 +508,7 @@
 
         async function removeContact(event, contactId) {
             event.stopPropagation(); // Предотвращаем срабатывание selectContact
-            
+
             if (!confirm("Удалить контакт?")) return;
 
             try {
@@ -412,14 +524,14 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     // Удаляем контакт из списка
                     const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
                     if (contactElement) {
                         contactElement.remove();
                     }
-                    
+
                     // Если удаленный контакт был текущим, очищаем чат
                     if (currentContact === contactId) {
                         currentContact = null;
