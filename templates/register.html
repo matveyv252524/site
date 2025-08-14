@@ -2,26 +2,26 @@
 
 {% block content %}
     <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px;">
-        <h2 style="text-align: center; margin-bottom: 20px;">Register</h2>
-        
+        <h2 style="text-align: center; margin-bottom: 20px;">Регистрация</h2>
+
         {% if error %}
         <div style="color: #f44336; margin-bottom: 15px; text-align: center;">{{ error }}</div>
         {% endif %}
-        
+
         <form method="post" action="/register" style="display: flex; flex-direction: column; gap: 15px;">
-            <input type="text" name="username" placeholder="Username (e.g. #username)" required 
+            <input type="text" name="username" placeholder="Имя пользователя (например, #username)" required
                    style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <input type="password" name="password" placeholder="Password" required 
+            <input type="password" name="password" placeholder="Пароль" required
                    style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <input type="password" name="confirm_password" placeholder="Confirm Password" required 
+            <input type="password" name="confirm_password" placeholder="Подтвердите пароль" required
                    style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
             <button type="submit" style="padding: 10px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Register
+                Зарегистрироваться
             </button>
         </form>
-        
+
         <div style="text-align: center; margin-top: 20px;">
-            Already have an account? <a href="/login" style="color: #2196f3;">Login</a>
+            Уже есть аккаунт? <a href="/login" style="color: #2196f3;">Войдите</a>
         </div>
     </div>
 {% endblock %}
