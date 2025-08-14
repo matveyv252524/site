@@ -237,7 +237,14 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message") {
-                    displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
+                    // Проверяем, относится ли сообщение к текущему чату
+                    const isCurrentChat = (data.from === currentContact || data.from === userId);
+                    if (isCurrentChat) {
+                        displayMessage(data.from === userId ? username : data.from, 
+                                       data.message, 
+                                       data.from !== userId, 
+                                       data.timestamp);
+                    }
                 }
                 else if (data.type === "call_incoming") {
                     showIncomingCall(data.from, data.call_id);
