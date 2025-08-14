@@ -3,10 +3,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import os
 import logging
-import asyncpg
-from typing import Optional, AsyncIterator, Dict, List
+import psycopg2
+import psycopg2.extras
+from typing import Optional, Dict, List
 import hashlib
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -14,26 +15,38 @@ logger = logging.getLogger(__name__)
 
 # Инициализация подключения к Supabase
 DATABASE_URL = os.getenv('DATABASE_URL')
-pool: Optional[asyncpg.pool.Pool] = None  # Явное указание типа
+conn: Optional[psycopg2.extensions.connection] = None
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global pool
+@contextmanager
+def get_db_connection():
+    global conn
     try:
-        # Подключение к Supabase с SSL
-        pool = await asyncpg.create_pool(
-            DATABASE_URL,
-            ssl='require',  # Обязательно для Supabase
-            min_size=1,
-            max_size=10,
-            command_timeout=60
-        )
-        logger.info("Connected to Supabase PostgreSQL")
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        yield conn
+    except Exception as e:
+        logger.error(f"Database connection error: {str(e)}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+            logger.info("Database connection closed")
 
-        # Инициализация таблиц
-        async with pool.acquire() as conn:
-            await conn.execute('''
+@contextmanager
+def get_db_cursor():
+    with get_db_connection() as connection:
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            yield cursor
+            connection.commit()
+        except Exception as e:
+            connection.rollback()
+            logger.error(f"Database error: {str(e)}")
+            raise
+
+def init_db():
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username VARCHAR(20) UNIQUE NOT NULL,
@@ -41,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             ''')
-            await conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS contacts (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -49,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     UNIQUE(user_id, contact_id)
                 )
             ''')
-            await conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS messages (
                     id SERIAL PRIMARY KEY,
                     sender_id INTEGER NOT NULL REFERENCES users(id),
@@ -59,22 +72,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 )
             ''')
         logger.info("Database tables initialized")
-
     except Exception as e:
-        logger.error(f"Database connection error: {str(e)}")
+        logger.error(f"Database initialization error: {str(e)}")
         raise
 
-    yield
-
-    # Закрытие подключения
-    if pool is not None:
-        await pool.close()
-        logger.info("Database connection closed")
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
+# Инициализация базы данных при старте
+init_db()
 
 class ConnectionManager:
     def __init__(self):
@@ -97,25 +103,19 @@ class ConnectionManager:
             del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected")
 
-
 manager = ConnectionManager()
-
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
-
-async def authenticate_user(username: str, password: str) -> Optional[dict]:
-    if pool is None:
-        logger.error("Database pool is not initialized")
-        return None
-
+def authenticate_user(username: str, password: str) -> Optional[dict]:
     try:
-        async with pool.acquire() as conn:
-            user = await conn.fetchrow(
-                'SELECT id, username, password FROM users WHERE username = $1',
-                username
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                'SELECT id, username, password FROM users WHERE username = %s',
+                (username,)
             )
+            user = cursor.fetchone()
             if user and user['password'] == hash_password(password):
                 return {"id": user['id'], "username": user['username']}
             return None
@@ -123,151 +123,123 @@ async def authenticate_user(username: str, password: str) -> Optional[dict]:
         logger.error(f"Authentication error: {str(e)}")
         return None
 
-
-async def register_user(username: str, password: str) -> Optional[dict]:
+def register_user(username: str, password: str) -> Optional[dict]:
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
-        return None
-
-    if pool is None:
-        logger.error("Database pool is not initialized")
         return None
 
     hashed_password = hash_password(password)
 
     try:
-        async with pool.acquire() as conn:
-            user_id = await conn.fetchval(
-                'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id',
-                username, hashed_password
-            )
-            return {"id": user_id, "username": username}
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id, username',
+                (username, hashed_password))
+            user = cursor.fetchone()
+            return {"id": user['id'], "username": user['username']}
     except Exception as e:
         logger.error(f"Registration error: {str(e)}")
         return None
 
-
-async def get_user_contacts(user_id: int) -> List[dict]:
-    if pool is None:
-        logger.error("Database pool is not initialized")
-        return []
-
+def get_user_contacts(user_id: int) -> List[dict]:
     try:
-        async with pool.acquire() as conn:
-            contacts = await conn.fetch(
-                'SELECT u.id, u.username FROM contacts c JOIN users u ON c.contact_id = u.id WHERE c.user_id = $1',
-                user_id
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                'SELECT u.id, u.username FROM contacts c JOIN users u ON c.contact_id = u.id WHERE c.user_id = %s',
+                (user_id,)
             )
+            contacts = cursor.fetchall()
             return [dict(contact) for contact in contacts]
     except Exception as e:
         logger.error(f"Error getting contacts: {str(e)}")
         return []
 
-
-async def save_message(sender_id: int, receiver_id: int, message: str):
-    if pool is None:
-        logger.error("Database pool is not initialized")
-        return
-
+def save_message(sender_id: int, receiver_id: int, message: str):
     try:
-        async with pool.acquire() as conn:
-            await conn.execute(
-                'INSERT INTO messages (sender_id, receiver_id, message) VALUES ($1, $2, $3)',
-                sender_id, receiver_id, message
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO messages (sender_id, receiver_id, message) VALUES (%s, %s, %s)',
+                (sender_id, receiver_id, message)
             )
     except Exception as e:
         logger.error(f"Error saving message: {str(e)}")
 
-
-async def add_contact(user_id: int, contact_username: str) -> dict:
-    if pool is None:
-        logger.error("Database pool is not initialized")
-        return {"success": False, "message": "Database not available"}
-
+def add_contact(user_id: int, contact_username: str) -> dict:
     try:
-        async with pool.acquire() as conn:
-            contact = await conn.fetchrow(
-                'SELECT id, username FROM users WHERE username = $1',
-                contact_username
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                'SELECT id, username FROM users WHERE username = %s',
+                (contact_username,)
             )
+            contact = cursor.fetchone()
             if not contact:
                 return {"success": False, "message": "User not found"}
 
-            await conn.execute(
-                'INSERT INTO contacts (user_id, contact_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                user_id, contact['id']
+            cursor.execute(
+                'INSERT INTO contacts (user_id, contact_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                (user_id, contact['id'])
             )
             return {"success": True, "contact": dict(contact)}
     except Exception as e:
         logger.error(f"Error adding contact: {str(e)}")
         return {"success": False, "message": "Database error"}
 
-
-async def get_chat_history(user_id: int, contact_id: int) -> List[dict]:
-    if pool is None:
-        logger.error("Database pool is not initialized")
-        return []
-
+def get_chat_history(user_id: int, contact_id: int) -> List[dict]:
     try:
-        async with pool.acquire() as conn:
-            messages = await conn.fetch(
+        with get_db_cursor() as cursor:
+            cursor.execute(
                 '''SELECT * FROM messages 
-                WHERE (sender_id = $1 AND receiver_id = $2) 
-                OR (sender_id = $2 AND receiver_id = $1)
+                WHERE (sender_id = %s AND receiver_id = %s) 
+                OR (sender_id = %s AND receiver_id = %s)
                 ORDER BY timestamp''',
-                user_id, contact_id
+                (user_id, contact_id, contact_id, user_id)
             )
+            messages = cursor.fetchall()
             return [dict(message) for message in messages]
     except Exception as e:
         logger.error(f"Error getting chat history: {str(e)}")
         return []
-
 
 # Маршруты
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
-
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    user = await authenticate_user(username, password)
+    user = authenticate_user(username, password)
     if not user:
         return templates.TemplateResponse("login.html",
-                                          {"request": request, "error": "Invalid credentials"})
+                                      {"request": request, "error": "Invalid credentials"})
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']))
     response.set_cookie(key="username", value=user['username'])
     return response
-
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
-
 @app.post("/register")
 async def register(request: Request, username: str = Form(...),
-                   password: str = Form(...), confirm_password: str = Form(...)):
+               password: str = Form(...), confirm_password: str = Form(...)):
     if password != confirm_password:
         return templates.TemplateResponse("register.html",
-                                          {"request": request, "error": "Passwords don't match"})
+                                      {"request": request, "error": "Passwords don't match"})
 
-    user = await register_user(username, password)
+    user = register_user(username, password)
     if not user:
         return templates.TemplateResponse("register.html",
-                                          {"request": request, "error": "Registration failed"})
+                                      {"request": request, "error": "Registration failed"})
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']))
     response.set_cookie(key="username", value=user['username'])
     return response
-
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
@@ -275,7 +247,7 @@ async def chat(request: Request, user_id: str):
     if not username:
         return RedirectResponse(url="/login")
 
-    contacts = await get_user_contacts(int(user_id))
+    contacts = get_user_contacts(int(user_id))
     return templates.TemplateResponse("chat.html", {
         "request": request,
         "user_id": user_id,
@@ -283,13 +255,11 @@ async def chat(request: Request, user_id: str):
         "contacts": contacts
     })
 
-
 @app.post("/api/add_contact")
 async def api_add_contact(request: Request):
     data = await request.json()
-    result = await add_contact(int(data['user_id']), data['contact_username'])
+    result = add_contact(int(data['user_id']), data['contact_username'])
     return result
-
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -298,7 +268,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         while True:
             data = await websocket.receive_json()
             if data['type'] == 'message':
-                await save_message(int(data['sender_id']), int(data['receiver_id']), data['message'])
+                save_message(int(data['sender_id']), int(data['receiver_id']), data['message'])
                 await manager.send_json(data['receiver_id'], data)
     except WebSocketDisconnect:
         manager.disconnect(user_id)
@@ -306,14 +276,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         logger.error(f"WebSocket error: {str(e)}")
         manager.disconnect(user_id)
 
-
 @app.get("/api/chat_history/{user_id}/{contact_id}")
 async def get_history(user_id: int, contact_id: int):
-    history = await get_chat_history(user_id, contact_id)
+    history = get_chat_history(user_id, contact_id)
     return {"history": history}
-
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
