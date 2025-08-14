@@ -5,68 +5,95 @@ from datetime import datetime
 import os
 import uuid
 import logging
-import sqlite3
-from typing import Optional
+import asyncpg
+from typing import Optional, AsyncIterator, List, Dict
 import hashlib
+from contextlib import asynccontextmanager
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# Конфигурация базы данных
+DATABASE_URL = os.environ.get('DATABASE_URL', "postgresql://user:password@localhost/dbname")
+pool: Optional[asyncpg.pool.Pool] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    global pool
+    # Инициализация пула подключений
+    try:
+        pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=1,
+            max_size=10,
+            command_timeout=60
+        )
+        logger.info("Database connection pool created")
+    except Exception as e:
+        logger.error(f"Failed to create database pool: {str(e)}")
+        raise
+
+    # Создание таблиц, если они не существуют
+    try:
+        if pool is None:
+            raise RuntimeError("Database connection pool is not initialized")
+
+        async with pool.acquire() as conn:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(20) UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS contacts (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    contact_id INTEGER NOT NULL REFERENCES users(id),
+                    UNIQUE(user_id, contact_id)
+                )
+            ''')
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    sender_id INTEGER NOT NULL REFERENCES users(id),
+                    receiver_id INTEGER NOT NULL REFERENCES users(id),
+                    message TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            logger.info("Database tables initialized")
+    except asyncpg.PostgresError as e:
+        logger.error(f"Database initialization error: {str(e)}")
+        raise
+
+    yield
+
+    # Закрытие пула подключений при остановке
+    if pool is not None:
+        await pool.close()
+        logger.info("Database connection pool closed")
+
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
-
-
-# Инициализация базы данных
-def init_db():
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                contact_id INTEGER NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(contact_id) REFERENCES users(id),
-                UNIQUE(user_id, contact_id)
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender_id INTEGER NOT NULL,
-                receiver_id INTEGER NOT NULL,
-                message TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(sender_id) REFERENCES users(id),
-                FOREIGN KEY(receiver_id) REFERENCES users(id)
-            )
-        ''')
-        conn.commit()
-
-
-init_db()
 
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections = {}
-        self.pending_calls = {}
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.pending_calls: Dict[str, Dict] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: str):
+    async def connect(self, websocket: WebSocket, user_id: str) -> None:
         await websocket.accept()
         self.active_connections[user_id] = websocket
         logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
 
-    async def send_json(self, receiver_id: str, message: dict):
+    async def send_json(self, receiver_id: str, message: Dict) -> bool:
         if receiver_id in self.active_connections:
             try:
                 await self.active_connections[receiver_id].send_json(message)
@@ -78,7 +105,7 @@ class ConnectionManager:
         logger.warning(f"Receiver {receiver_id} not connected")
         return False
 
-    def disconnect(self, user_id: str):
+    def disconnect(self, user_id: str) -> None:
         if user_id in self.active_connections:
             del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected")
@@ -87,77 +114,153 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# Хэширование пароля
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-# Проверка пользователя
-def authenticate_user(username: str, password: str) -> Optional[dict]:
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, username, password FROM users WHERE username = ?', (username,))
-        user = cursor.fetchone()
+async def authenticate_user(username: str, password: str) -> Optional[Dict]:
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
 
-        if user and user[2] == hash_password(password):
-            return {"id": user[0], "username": user[1]}
+    try:
+        async with pool.acquire() as conn:
+            user = await conn.fetchrow(
+                'SELECT id, username, password FROM users WHERE username = $1',
+                username
+            )
+            if user and user['password'] == hash_password(password):
+                return {"id": user['id'], "username": user['username']}
+            return None
+    except asyncpg.PostgresError as e:
+        logger.error(f"Authentication error: {str(e)}")
         return None
 
 
-# Регистрация пользователя
-def register_user(username: str, password: str) -> Optional[dict]:
-    if not username.startswith('#') or len(username) < 6 or len(username) > 16:
+async def register_user(username: str, password: str) -> Optional[Dict]:
+    if not username or not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return None
+
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
 
     hashed_password = hash_password(password)
 
     try:
-        with sqlite3.connect('messenger.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)',
-                           (username, hashed_password))
-            conn.commit()
-            return {"id": cursor.lastrowid, "username": username}
-    except sqlite3.IntegrityError:
+        async with pool.acquire() as conn:
+            user_id = await conn.fetchval(
+                'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id',
+                username, hashed_password
+            )
+            return {"id": user_id, "username": username}
+    except asyncpg.PostgresError as e:
+        logger.error(f"Registration error: {str(e)}")
         return None
 
 
-# Получение контактов пользователя
-def get_user_contacts(user_id: int):
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT u.id, u.username 
-            FROM contacts c
-            JOIN users u ON c.contact_id = u.id
-            WHERE c.user_id = ?
-        ''', (user_id,))
-        return [{"id": row[0], "username": row[1]} for row in cursor.fetchall()]
+async def get_user_contacts(user_id: int) -> List[Dict]:
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
+
+    try:
+        async with pool.acquire() as conn:
+            contacts = await conn.fetch(
+                '''
+                SELECT u.id, u.username 
+                FROM contacts c
+                JOIN users u ON c.contact_id = u.id
+                WHERE c.user_id = $1
+                ''',
+                user_id
+            )
+            return [{"id": row['id'], "username": row['username']} for row in contacts]
+    except asyncpg.PostgresError as e:
+        logger.error(f"Error getting contacts: {str(e)}")
+        return []
 
 
-# Получение истории сообщений
-def get_message_history(user_id: int, contact_id: int):
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT sender_id, message, timestamp 
-            FROM messages 
-            WHERE (sender_id = ? AND receiver_id = ?) 
-               OR (sender_id = ? AND receiver_id = ?)
-            ORDER BY timestamp
-        ''', (user_id, contact_id, contact_id, user_id))
-        return cursor.fetchall()
+async def get_message_history(user_id: int, contact_id: int) -> List[Dict]:
+    if not user_id or not contact_id:
+        return []
+
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
+
+    try:
+        async with pool.acquire() as conn:
+            messages = await conn.fetch(
+                '''
+                SELECT m.sender_id, u.username as sender_username, m.message, m.timestamp 
+                FROM messages m
+                JOIN users u ON m.sender_id = u.id
+                WHERE (m.sender_id = $1 AND m.receiver_id = $2) 
+                   OR (m.sender_id = $2 AND m.receiver_id = $1)
+                ORDER BY m.timestamp
+                ''',
+                user_id, contact_id
+            )
+            return [
+                {
+                    "sender_id": msg['sender_id'],
+                    "sender_username": msg['sender_username'],
+                    "message": msg['message'],
+                    "timestamp": msg['timestamp']
+                }
+                for msg in messages
+            ]
+    except asyncpg.PostgresError as e:
+        logger.error(f"Error getting message history: {str(e)}")
+        return []
 
 
-# Сохранение сообщения
-def save_message(sender_id: int, receiver_id: int, message: str):
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO messages (sender_id, receiver_id, message)
-            VALUES (?, ?, ?)
-        ''', (sender_id, receiver_id, message))
-        conn.commit()
+async def save_message(sender_id: int, receiver_id: int, message: str) -> None:
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                '''
+                INSERT INTO messages (sender_id, receiver_id, message)
+                VALUES ($1, $2, $3)
+                ''',
+                sender_id, receiver_id, message
+            )
+    except asyncpg.PostgresError as e:
+        logger.error(f"Error saving message: {str(e)}")
+
+
+async def add_contact_db(user_id: int, contact_username: str) -> Dict:
+    if pool is None:
+        raise RuntimeError("Database connection pool is not initialized")
+
+    try:
+        async with pool.acquire() as conn:
+            contact = await conn.fetchrow(
+                'SELECT id, username FROM users WHERE username = $1',
+                contact_username
+            )
+            if not contact:
+                return {"success": False, "message": "User not found"}
+
+            contact_id = contact['id']
+
+            if contact_id == user_id:
+                return {"success": False, "message": "You can't add yourself"}
+
+            exists = await conn.fetchval(
+                'SELECT 1 FROM contacts WHERE user_id = $1 AND contact_id = $2',
+                user_id, contact_id
+            )
+            if exists:
+                return {"success": False, "message": "Contact already exists"}
+
+            await conn.execute(
+                'INSERT INTO contacts (user_id, contact_id) VALUES ($1, $2)',
+                user_id, contact_id
+            )
+            return {"success": True, "contact_id": contact_id, "contact_username": contact['username']}
+    except asyncpg.PostgresError as e:
+        return {"success": False, "message": str(e)}
 
 
 @app.get("/")
@@ -172,7 +275,7 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    user = authenticate_user(username, password)
+    user = await authenticate_user(username, password)
     if not user:
         return templates.TemplateResponse("login.html",
                                           {"request": request, "error": "Invalid username or password"})
@@ -197,12 +300,12 @@ async def register(request: Request,
         return templates.TemplateResponse("register.html",
                                           {"request": request, "error": "Passwords don't match"})
 
-    if not username.startswith('#') or len(username) < 6 or len(username) > 16:
+    if not username or not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return templates.TemplateResponse("register.html",
                                           {"request": request,
                                            "error": "Username must start with # and be 6-16 characters long"})
 
-    user = register_user(username, password)
+    user = await register_user(username, password)
     if not user:
         return templates.TemplateResponse("register.html",
                                           {"request": request, "error": "Username already taken"})
@@ -216,16 +319,30 @@ async def register(request: Request,
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
     username = request.cookies.get("username")
-    if not username:
+    user_id_cookie = request.cookies.get("user_id")
+    if not username or not user_id_cookie or user_id_cookie != user_id:
         return RedirectResponse(url="/login")
 
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM users WHERE id = ?', (int(user_id),))
-        if not cursor.fetchone():
-            return RedirectResponse(url="/login")
+    try:
+        user_id_int = int(user_id)
+    except ValueError:
+        return RedirectResponse(url="/login")
 
-    contacts = get_user_contacts(int(user_id))
+    if pool is None:
+        return RedirectResponse(url="/login")
+
+    try:
+        async with pool.acquire() as conn:
+            user_exists = await conn.fetchval(
+                'SELECT 1 FROM users WHERE id = $1',
+                user_id_int
+            )
+            if not user_exists:
+                return RedirectResponse(url="/login")
+    except asyncpg.PostgresError:
+        return RedirectResponse(url="/login")
+
+    contacts = await get_user_contacts(user_id_int)
     return templates.TemplateResponse("chat.html", {
         "request": request,
         "user_id": user_id,
@@ -237,73 +354,29 @@ async def chat(request: Request, user_id: str):
 @app.post("/add-contact")
 async def add_contact(request: Request):
     data = await request.json()
-    user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username")
+    try:
+        user_id = int(data.get("user_id"))
+        contact_username = data.get("contact_username")
 
-    if not user_id or not contact_username:
-        return {"success": False, "message": "Invalid data"}
+        if not contact_username:
+            return {"success": False, "message": "Invalid data"}
 
-    if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
-        return {"success": False, "message": "Invalid username format"}
+        if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
+            return {"success": False, "message": "Invalid username format"}
 
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-
-        # Проверяем существование контакта
-        cursor.execute('SELECT id, username FROM users WHERE username = ?', (contact_username,))
-        contact = cursor.fetchone()
-        if not contact:
-            return {"success": False, "message": "User not found"}
-
-        contact_id, contact_username = contact[0], contact[1]
-
-        # Проверяем, не пытаемся ли добавить себя
-        if contact_id == user_id:
-            return {"success": False, "message": "You can't add yourself"}
-
-        # Проверяем, есть ли уже такой контакт
-        cursor.execute('''
-            SELECT id FROM contacts 
-            WHERE user_id = ? AND contact_id = ?
-        ''', (user_id, contact_id))
-        if cursor.fetchone():
-            return {"success": False, "message": "Contact already exists"}
-
-        # Добавляем контакт
-        try:
-            cursor.execute('''
-                INSERT INTO contacts (user_id, contact_id) 
-                VALUES (?, ?)
-            ''', (user_id, contact_id))
-            conn.commit()
-            return {"success": True, "contact_id": contact_id, "contact_username": contact_username}
-        except sqlite3.Error as e:
-            return {"success": False, "message": str(e)}
+        result = await add_contact_db(user_id, contact_username)
+        return result
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @app.get("/get-messages")
 async def get_messages(user_id: int, contact_id: int):
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT m.sender_id, u.username as sender_username, m.message, m.timestamp 
-            FROM messages m
-            JOIN users u ON m.sender_id = u.id
-            WHERE (m.sender_id = ? AND m.receiver_id = ?) 
-               OR (m.sender_id = ? AND m.receiver_id = ?)
-            ORDER BY m.timestamp
-        ''', (user_id, contact_id, contact_id, user_id))
-
-        messages = []
-        for row in cursor.fetchall():
-            messages.append({
-                "sender_id": row[0],
-                "sender_username": row[1],
-                "message": row[2],
-                "timestamp": row[3]
-            })
-
+    try:
+        messages = await get_message_history(user_id, contact_id)
         return messages
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/logout")
@@ -316,15 +389,25 @@ async def logout():
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await manager.connect(websocket, user_id)
+    try:
+        await manager.connect(websocket, user_id)
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {str(e)}")
+        await websocket.close()
+        return
+
     try:
         while True:
             data = await websocket.receive_json()
+
+            if not isinstance(data, dict) or "type" not in data:
+                await websocket.close(code=1003)
+                return
+
             logger.info(f"Received from {user_id}: {data}")
 
             if data["type"] == "message":
-                # Сохраняем сообщение в БД
-                save_message(int(user_id), int(data["to"]), data["message"])
+                await save_message(int(user_id), int(data["to"]), data["message"])
 
                 await manager.send_json(data["to"], {
                     "type": "message",
