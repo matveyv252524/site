@@ -6,7 +6,7 @@ import os
 import uuid
 import logging
 import sqlite3
-from typing import Optional
+from typing import Optional, Dict, List
 import hashlib
 
 # Настройка логирования
@@ -15,6 +15,49 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.pending_calls: Dict[str, dict] = {}
+        self.user_notifications: Dict[str, List[dict]] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+        logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
+
+        # Отправляем ожидающие уведомления при подключении
+        if user_id in self.user_notifications:
+            for notification in self.user_notifications[user_id]:
+                await self.send_json(user_id, notification)
+            self.user_notifications[user_id] = []
+
+    async def send_json(self, receiver_id: str, message: dict):
+        if receiver_id in self.active_connections:
+            try:
+                await self.active_connections[receiver_id].send_json(message)
+                return True
+            except Exception as e:
+                logger.error(f"Error sending to {receiver_id}: {str(e)}")
+                del self.active_connections[receiver_id]
+                return False
+        else:
+            # Сохраняем уведомление, если пользователь не в сети
+            if receiver_id not in self.user_notifications:
+                self.user_notifications[receiver_id] = []
+            self.user_notifications[receiver_id].append(message)
+            logger.info(f"Notification queued for {receiver_id}")
+            return False
+
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+            logger.info(f"User {user_id} disconnected")
+
+
+manager = ConnectionManager()
 
 
 # Инициализация базы данных
@@ -46,6 +89,7 @@ def init_db():
                 receiver_id INTEGER NOT NULL,
                 message TEXT NOT NULL,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_read BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY(sender_id) REFERENCES users(id),
                 FOREIGN KEY(receiver_id) REFERENCES users(id)
             )
@@ -54,37 +98,6 @@ def init_db():
 
 
 init_db()
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections = {}
-        self.pending_calls = {}
-
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        self.active_connections[user_id] = websocket
-        logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
-
-    async def send_json(self, receiver_id: str, message: dict):
-        if receiver_id in self.active_connections:
-            try:
-                await self.active_connections[receiver_id].send_json(message)
-                return True
-            except Exception as e:
-                logger.error(f"Error sending to {receiver_id}: {str(e)}")
-                del self.active_connections[receiver_id]
-                return False
-        logger.warning(f"Receiver {receiver_id} not connected")
-        return False
-
-    def disconnect(self, user_id: str):
-        if user_id in self.active_connections:
-            del self.active_connections[user_id]
-            logger.info(f"User {user_id} disconnected")
-
-
-manager = ConnectionManager()
 
 
 # Хэширование пароля
@@ -140,11 +153,12 @@ def get_message_history(user_id: int, contact_id: int):
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT sender_id, message, timestamp 
-            FROM messages 
-            WHERE (sender_id = ? AND receiver_id = ?) 
-               OR (sender_id = ? AND receiver_id = ?)
-            ORDER BY timestamp
+            SELECT m.sender_id, u.username as sender_username, m.message, m.timestamp 
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE (m.sender_id = ? AND m.receiver_id = ?) 
+               OR (m.sender_id = ? AND m.receiver_id = ?)
+            ORDER BY m.timestamp
         ''', (user_id, contact_id, contact_id, user_id))
         return cursor.fetchall()
 
@@ -160,6 +174,16 @@ def save_message(sender_id: int, receiver_id: int, message: str):
         conn.commit()
 
 
+# Получение username по ID
+def get_username(user_id: int) -> str:
+    with sqlite3.connect('messenger.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT username FROM users WHERE id = ?', (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else "unknown"
+
+
+# Маршруты
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -238,49 +262,38 @@ async def chat(request: Request, user_id: str):
 async def add_contact(request: Request):
     data = await request.json()
     user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username").strip()  # Добавляем trim для username
+    contact_username = data.get("contact_username").strip()
 
-    # Проверка входных данных
     if not user_id or not contact_username:
-        return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
+        return {"success": False, "message": "Invalid data"}
 
-    # Проверка формата username
     if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
-        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
+        return {"success": False, "message": "Username must start with # and be 6-16 characters long"}
 
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
 
-        # Получаем username текущего пользователя
+        # Проверяем, не пытается ли пользователь добавить себя
         cursor.execute('SELECT username FROM users WHERE id = ?', (user_id,))
         current_user = cursor.fetchone()
+        if current_user and current_user[0].lower() == contact_username.lower():
+            return {"success": False, "message": "You can't add yourself"}
 
-        if not current_user:
-            return {"success": False, "message": "Текущий пользователь не найден"}
-
-        current_username = current_user[0]
-
-        # Проверяем, не пытается ли пользователь добавить себя
-        if contact_username.lower() == current_username.lower():
-            return {"success": False, "message": "Вы не можете добавить самого себя"}
-
-        # Ищем пользователя для добавления
+        # Проверяем существование контакта
         cursor.execute('SELECT id, username FROM users WHERE username = ?', (contact_username,))
         contact = cursor.fetchone()
-
         if not contact:
-            return {"success": False, "message": "Пользователь не найден"}
+            return {"success": False, "message": "User not found"}
 
         contact_id, contact_username = contact[0], contact[1]
 
-        # Проверяем, не добавлен ли уже этот контакт
+        # Проверяем, есть ли уже такой контакт
         cursor.execute('''
             SELECT id FROM contacts 
             WHERE user_id = ? AND contact_id = ?
         ''', (user_id, contact_id))
-
         if cursor.fetchone():
-            return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
+            return {"success": False, "message": "Contact already exists"}
 
         # Добавляем контакт
         try:
@@ -289,22 +302,26 @@ async def add_contact(request: Request):
                 VALUES (?, ?)
             ''', (user_id, contact_id))
             conn.commit()
-
-            # Добавляем обратную связь (если хотим двусторонние контакты)
-            # cursor.execute('''
-            #     INSERT OR IGNORE INTO contacts (user_id, contact_id)
-            #     VALUES (?, ?)
-            # ''', (contact_id, user_id))
-            # conn.commit()
-
-            return {
-                "success": True,
-                "contact_id": contact_id,
-                "contact_username": contact_username,
-                "message": "Контакт успешно добавлен"
-            }
+            return {"success": True, "contact_id": contact_id, "contact_username": contact_username}
         except sqlite3.Error as e:
-            return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
+            return {"success": False, "message": str(e)}
+
+
+@app.post("/remove-contact")
+async def remove_contact(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+    contact_id = int(data.get("contact_id"))
+
+    with sqlite3.connect('messenger.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM contacts 
+            WHERE user_id = ? AND contact_id = ?
+        ''', (user_id, contact_id))
+        conn.commit()
+
+        return {"success": True, "message": "Contact removed successfully"}
 
 
 @app.get("/get-messages")
@@ -340,23 +357,6 @@ async def logout():
     return response
 
 
-@app.post("/remove-contact")
-async def remove_contact(request: Request):
-    data = await request.json()
-    user_id = int(data.get("user_id"))
-    contact_id = int(data.get("contact_id"))
-
-    with sqlite3.connect('messenger.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            DELETE FROM contacts 
-            WHERE user_id = ? AND contact_id = ?
-        ''', (user_id, contact_id))
-        conn.commit()
-
-        return {"success": True, "message": "Контакт успешно удален"}
-
-
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
@@ -366,15 +366,38 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             logger.info(f"Received from {user_id}: {data}")
 
             if data["type"] == "message":
-                # Сохраняем сообщение в БД
-                save_message(int(user_id), int(data["to"]), data["message"])
+                receiver_id = data["to"]
+                message_text = data["message"]
 
-                await manager.send_json(data["to"], {
+                # Сохраняем сообщение в БД
+                save_message(int(user_id), int(receiver_id), message_text)
+
+                # Проверяем, есть ли взаимный контакт
+                with sqlite3.connect('messenger.db') as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT 1 FROM contacts 
+                        WHERE user_id = ? AND contact_id = ?
+                    ''', (receiver_id, user_id))
+                    is_mutual = cursor.fetchone() is not None
+
+                # Отправляем сообщение
+                await manager.send_json(receiver_id, {
                     "type": "message",
                     "from": user_id,
-                    "message": data["message"],
-                    "timestamp": str(datetime.now())
+                    "message": message_text,
+                    "timestamp": str(datetime.now()),
+                    "is_mutual": is_mutual
                 })
+
+                # Если нет взаимного контакта, отправляем уведомление
+                if not is_mutual:
+                    await manager.send_json(receiver_id, {
+                        "type": "notification",
+                        "from": user_id,
+                        "message": f"New message from #{get_username(user_id)}: {message_text}",
+                        "timestamp": str(datetime.now())
+                    })
 
             elif data["type"] == "call_request":
                 call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
