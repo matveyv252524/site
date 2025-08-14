@@ -3,8 +3,8 @@
 <head>
     <title>Audio Chat</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        body { 
+            font-family: Arial, sans-serif; 
             margin: 0;
             display: flex;
             height: 100vh;
@@ -56,13 +56,13 @@
             border-radius: 5px;
             max-width: 70%;
         }
-        .received {
-            background: #e3f2fd;
-            text-align: left;
+        .received { 
+            background: #e3f2fd; 
+            text-align: left; 
         }
-        .sent {
-            background: #bbdefb;
-            text-align: right;
+        .sent { 
+            background: #bbdefb; 
+            text-align: right; 
             margin-left: auto;
         }
         .timestamp {
@@ -156,12 +156,12 @@
             <h3>{{ username }}</h3>
             <a href="/logout" style="color: #f44336; text-decoration: none;">Logout</a>
         </div>
-
+        
         <div id="contacts-header">
             <h3>Contacts</h3>
             <button onclick="showNewContactModal()">+ New</button>
         </div>
-
+        
         <div id="contacts-list">
             {% for contact in contacts %}
             <div class="contact" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
@@ -173,10 +173,10 @@
 
     <div id="chat-container">
         <div id="connection-status">Disconnected</div>
-
+        
         <h3 id="current-contact">Select a contact to chat</h3>
         <div id="messages"></div>
-
+        
         <div id="message-form">
             <input type="text" id="message-input" placeholder="Type your message..." disabled>
             <button onclick="sendMessage()" disabled id="send-btn">Send</button>
@@ -260,15 +260,15 @@
             document.getElementById("message-input").disabled = false;
             document.getElementById("send-btn").disabled = false;
             document.getElementById("call-btn").disabled = false;
-
+            
             // Удаляем активный класс у всех контактов
             document.querySelectorAll('.contact').forEach(el => {
                 el.classList.remove('active');
             });
-
+            
             // Добавляем активный класс выбранному контакту
             event.target.classList.add('active');
-
+            
             // Очищаем сообщения и загружаем историю чата
             document.getElementById("messages").innerHTML = "";
             loadMessageHistory(contactId);
@@ -278,7 +278,7 @@
             try {
                 const response = await fetch(`/get-messages?user_id=${userId}&contact_id=${contactId}`);
                 const messages = await response.json();
-
+                
                 messages.forEach(msg => {
                     const isReceived = msg.sender_id != userId;
                     displayMessage(
@@ -304,7 +304,7 @@
         async function addContact() {
             const contactUsername = document.getElementById("contact-username").value.trim();
             if (!contactUsername) return;
-
+            
             try {
                 const response = await fetch('/add-contact', {
                     method: 'POST',
@@ -316,7 +316,7 @@
                         contact_username: contactUsername
                     })
                 });
-
+                
                 const result = await response.json();
                 if (result.success) {
                     // Обновляем список контактов
@@ -328,7 +328,7 @@
                         selectContact(result.contact_id, result.contact_username);
                     };
                     contactsList.appendChild(newContact);
-
+                    
                     hideNewContactModal();
                 } else {
                     alert(result.message || "Failed to add contact");
@@ -344,7 +344,7 @@
             const message = input.value.trim();
 
             if (!message || !currentContact) return;
-
+            
             try {
                 ws.send(JSON.stringify({
                     type: "message",
@@ -461,11 +461,11 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
-
+            
             document.getElementById("message-input").addEventListener("keypress", (e) => {
                 if (e.key === "Enter") sendMessage();
             });
-
+            
             // Проверяем, есть ли контакты, и выбираем первый, если есть
             const contacts = document.querySelectorAll('.contact');
             if (contacts.length > 0) {
