@@ -88,6 +88,7 @@
     </div>
 
     <audio id="remoteAudio" autoplay></audio>
+    <audio id="localAudio" muted style="display: none;"></audio>
 
     <script>
         const callId = "{{ call_id }}";
@@ -132,15 +133,19 @@
 
         async function setupAudio() {
             try {
-                // Получаем только аудио с оптимальными параметрами
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
+                        autoGainControl: true,
+                        channelCount: 1
                     },
                     video: false
                 });
+
+                // Play local audio for feedback (muted)
+                const localAudio = document.getElementById('localAudio');
+                localAudio.srcObject = localStream;
 
                 document.getElementById("status").textContent = "Audio connected";
                 console.log("Audio stream obtained");
@@ -160,19 +165,21 @@
                     { urls: "stun:stun1.l.google.com:19302" },
                     { urls: "stun:stun2.l.google.com:19302" }
                 ],
-                iceTransportPolicy: "all"
+                iceTransportPolicy: "all",
+                bundlePolicy: "max-bundle",
+                rtcpMuxPolicy: "require"
             };
 
             peerConnection = new RTCPeerConnection(configuration);
             console.log("PeerConnection created");
 
-            // Добавляем аудио треки
+            // Add audio tracks
             localStream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStream);
                 console.log("Added local track:", track.kind);
             });
 
-            // Обработчики событий ICE
+            // ICE candidate handlers
             peerConnection.onicecandidate = ({ candidate }) => {
                 if (candidate) {
                     console.log("New ICE candidate:", candidate);
@@ -183,12 +190,10 @@
                         call_id: callId,
                         candidate: candidate.toJSON()
                     }));
-                } else {
-                    console.log("All ICE candidates gathered");
                 }
             };
 
-            // Получение удаленного аудио
+            // Handle remote stream
             peerConnection.ontrack = ({ streams: [remoteStream] }) => {
                 console.log("Received remote stream:", remoteStream);
                 const remoteAudio = document.getElementById("remoteAudio");
@@ -196,10 +201,15 @@
                     remoteAudio.srcObject = remoteStream;
                     document.getElementById("status").textContent = "Call active";
                     console.log("Remote audio connected");
+
+                    // Handle audio play issues
+                    const playPromise = remoteAudio.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(e => console.log("Audio play error:", e));
+                    }
                 }
             };
 
-            // Отслеживание состояния соединения
             peerConnection.oniceconnectionstatechange = () => {
                 const state = peerConnection.iceConnectionState;
                 console.log("ICE connection state changed:", state);
@@ -226,11 +236,12 @@
 
                 if (isCaller) {
                     try {
-                        const offer = await peerConnection.createOffer({
-                            offerToReceiveAudio: true,
-                            offerToReceiveVideo: false
-                        });
+                        const offerOptions = {
+                            offerToReceiveAudio: 1,
+                            offerToReceiveVideo: 0
+                        };
 
+                        const offer = await peerConnection.createOffer(offerOptions);
                         await peerConnection.setLocalDescription(offer);
                         console.log("Created offer:", offer);
 
@@ -253,7 +264,7 @@
             }
         }
 
-        // Обработчик сообщений WebSocket
+        // WebSocket message handler
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
             console.log("Received WebSocket message:", data);
@@ -268,7 +279,11 @@
                     );
                     console.log("Remote description set");
 
-                    const answer = await peerConnection.createAnswer();
+                    const answerOptions = {
+                        voiceActivityDetection: false
+                    };
+
+                    const answer = await peerConnection.createAnswer(answerOptions);
                     await peerConnection.setLocalDescription(answer);
                     console.log("Created answer:", answer);
 
@@ -309,7 +324,7 @@
             }
         };
 
-        // Управление звонком
+        // Call controls
         document.getElementById("endCall").addEventListener("click", endCall);
         document.getElementById("toggleAudio").addEventListener("click", toggleAudio);
 
@@ -329,7 +344,7 @@
         function endCall() {
             console.log("Ending call...");
 
-            // Отправляем уведомление о завершении звонка
+            // Send call end notification
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: "call_end",
@@ -339,7 +354,7 @@
                 }));
             }
 
-            // Закрываем соединения
+            // Close connections
             if (peerConnection) {
                 peerConnection.close();
                 console.log("PeerConnection closed");
@@ -355,18 +370,31 @@
                 console.log("WebSocket closed");
             }
 
-            // Возвращаемся в чат
+            // Return to chat
             window.location.href = `/chat/${userId}`;
         }
 
-        // Обработка закрытия страницы
+        // Handle page close
         window.addEventListener('beforeunload', endCall);
         window.addEventListener('pagehide', endCall);
 
-        // Инициализация при загрузке
+        // Initialize on load
         document.addEventListener('DOMContentLoaded', () => {
             console.log("Call page loaded");
             updateStatus("Connecting...");
+
+            // Fix for iOS - trigger user gesture
+            document.body.addEventListener('touchend', function initAudio() {
+                // Remove this event listener after first touch
+                document.body.removeEventListener('touchend', initAudio);
+
+                // Try to play audio to unlock audio context
+                const audio = new Audio();
+                audio.volume = 0;
+                audio.play().then(() => {
+                    console.log("Audio context unlocked");
+                }).catch(e => console.log("Audio unlock error:", e));
+            }, false);
         });
     </script>
 </body>
