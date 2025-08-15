@@ -1,101 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Аудио чат</title>
+    <title>Audio Chat</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            display: flex;
-            height: 100vh;
-        }
-        #sidebar {
-            width: 250px;
-            background: #f8f9fa;
-            border-right: 1px solid #ddd;
-            padding: 20px;
-            overflow-y: auto;
-        }
-        #chat-container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        #contacts-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .contact {
-            padding: 10px;
-            margin-bottom: 5px;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .contact:hover {
-            background: #e9ecef;
-        }
-        .contact.active {
-            background: #dee2e6;
-        }
-        .contact-remove {
-            color: #f44336;
-            cursor: pointer;
-            margin-left: 10px;
-        }
-        #messages {
-            flex: 1;
-            border: 1px solid #ddd;
-            padding: 10px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            background: white;
-        }
-        .message {
-            margin-bottom: 10px;
-            padding: 8px;
-            border-radius: 5px;
-            max-width: 70%;
-        }
-        .received {
-            background: #e3f2fd;
-            text-align: left;
-        }
-        .sent {
-            background: #bbdefb;
-            text-align: right;
-            margin-left: auto;
-        }
-        .timestamp {
-            font-size: 0.8em;
-            color: #666;
-            margin-top: 2px;
-        }
-        #message-form {
-            display: flex;
-            gap: 10px;
-        }
-        #message-input {
-            flex-grow: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        button {
-            padding: 8px 15px;
-            background: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #chat-container { display: none; }
+        #init-screen { text-align: center; margin-top: 50px; }
+        #messages { height: 400px; border: 1px solid #ddd; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
+        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
+        .received { background: #e3f2fd; text-align: left; }
+        .sent { background: #bbdefb; text-align: right; }
+        .timestamp { font-size: 0.8em; color: #666; margin-top: 2px; }
+        #message-form { display: flex; gap: 10px; }
+        #message-input { flex-grow: 1; padding: 8px; }
+        button { padding: 8px 15px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
         #connection-status {
             position: fixed;
             top: 10px;
@@ -105,38 +23,6 @@
             font-size: 0.9em;
             background: #f44336;
             color: white;
-        }
-        .connected #connection-status {
-            background: #4CAF50;
-        }
-        #new-contact-modal {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-            width: 300px;
-        }
-        #new-contact-modal h3 {
-            margin-top: 0;
-            text-align: center;
-        }
-        #new-contact-modal input {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        #user-info {
-            padding: 10px;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #ddd;
         }
         .call-notification {
             position: fixed;
@@ -161,445 +47,105 @@
             padding: 10px 20px;
             border-radius: 20px;
         }
-        .modal-buttons {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-        .error-message {
-            color: #f44336;
-            font-size: 0.9em;
-            margin-top: 5px;
-            text-align: center;
-        }
-        .notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #4285f4;
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-            z-index: 1000;
-            max-width: 300px;
-            cursor: pointer;
-            animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-        }
-        .notification-close {
-            float: right;
-            cursor: pointer;
-            margin-left: 10px;
-        }
-        .unread-badge {
-            background: #f44336;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            margin-left: 5px;
-        }
     </style>
 </head>
 <body>
-    <div id="sidebar">
-        <div id="user-info">
-            <h3>{{ username }}</h3>
-            <a href="/logout" style="color: #f44336; text-decoration: none;">Выйти</a>
-        </div>
+    <div id="connection-status">Disconnected</div>
 
-        <div id="contacts-header">
-            <h3>Контакты</h3>
-            <button onclick="showNewContactModal()">+ Добавить</button>
-        </div>
-
-        <div id="contacts-list">
-            {% for contact in contacts %}
-            <div class="contact" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
-                {{ contact.username }}
-                <span class="contact-remove" onclick="removeContact(event, '{{ contact.id }}')">×</span>
-            </div>
-            {% endfor %}
+    <div id="init-screen">
+        <h2>Audio Messenger</h2>
+        <p>Your ID: <strong>{{ user_id }}</strong></p>
+        <div>
+            <input type="text" id="contact-id" placeholder="Enter friend's ID">
+            <button onclick="startChat()">Start Chat</button>
         </div>
     </div>
 
     <div id="chat-container">
-        <div id="connection-status">Отключено</div>
-
-        <h3 id="current-contact">Выберите контакт для чата</h3>
+        <h3>Chat with <span id="contact-name"></span></h3>
         <div id="messages"></div>
-
         <div id="message-form">
-            <input type="text" id="message-input" placeholder="Введите сообщение..." disabled>
-            <button onclick="sendMessage()" disabled id="send-btn">Отправить</button>
-            <button onclick="startAudioCall()" disabled id="call-btn">Аудио звонок</button>
-        </div>
-    </div>
-
-    <div id="new-contact-modal">
-        <h3>Добавить новый контакт</h3>
-        <input type="text" id="contact-username" placeholder="Введите имя (например, #username)">
-        <div id="contact-error" class="error-message"></div>
-        <div class="modal-buttons">
-            <button onclick="addContact()">Добавить</button>
-            <button onclick="hideNewContactModal()" style="background: #f44336;">Отмена</button>
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button onclick="sendMessage()">Send</button>
+            <button onclick="startAudioCall()">Audio Call</button>
         </div>
     </div>
 
     <div id="waiting-notification" class="call-waiting" style="display: none;">
-        Ожидание ответа...
-        <button onclick="cancelCall()" style="margin-left: 10px; background: #f44336;">Отмена</button>
+        Waiting for answer...
+        <button onclick="cancelCall()" style="margin-left: 10px; background: #f44336;">Cancel</button>
     </div>
 
     <script>
         const userId = "{{ user_id }}";
-        const username = "{{ username }}";
         let ws;
         let currentContact = null;
         let currentCallId = null;
         let callTimeout;
-        let unreadMessages = {};
 
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
             statusElement.textContent = status;
-            statusElement.style.background = status === "Подключено" ? "#4CAF50" : "#f44336";
+            statusElement.style.background = status === "Connected" ? "#4CAF50" : "#f44336";
         }
 
-    function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}${window.location.host}/ws/${userId}`;
-    console.log(`Connecting to WebSocket: ${wsUrl}`);
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-        console.log("WebSocket connected");
-        updateStatus("Подключено");
-        // Загружаем контакты, если они есть
-        const firstContact = document.querySelector('.contact');
-        if (firstContact) firstContact.click();
-    };
-
-    ws.onclose = (e) => {
-        console.error(`WebSocket closed: ${e.code} ${e.reason}`);
-        updateStatus("Отключено");
-        // Переподключение через 3 секунды
-        setTimeout(connectWebSocket, 3000);
-    };
-
-    ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        updateStatus("Ошибка");
-    };
-
-    ws.onmessage = (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            console.log("WS message:", data);
-            // Обработка сообщений...
-        } catch (err) {
-            console.error("Failed to parse WebSocket message:", err);
-        }
-    };
-}
-
-        function addUnreadBadge(contactId) {
-            if (!unreadMessages[contactId]) {
-                unreadMessages[contactId] = 0;
-            }
-            unreadMessages[contactId]++;
-
-            // Обновляем бейдж в списке контактов
-            const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
-            if (contactElement) {
-                let badge = contactElement.querySelector('.unread-badge');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'unread-badge';
-                    contactElement.appendChild(badge);
-                }
-                badge.textContent = unreadMessages[contactId];
-            }
-        }
-
-        function clearUnreadBadge(contactId) {
-            if (unreadMessages[contactId]) {
-                delete unreadMessages[contactId];
-
-                const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
-                if (contactElement) {
-                    const badge = contactElement.querySelector('.unread-badge');
-                    if (badge) {
-                        badge.remove();
-                    }
-                }
-            }
-        }
-
-        function showNotification(from, message) {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.innerHTML = `
-                <span class="notification-close" onclick="this.parentElement.remove()">×</span>
-                <strong>Новое сообщение от #${from}</strong>
-                <p>${message.length > 50 ? message.substring(0, 50) + '...' : message}</p>
-            `;
-
-            notification.onclick = () => {
-                // При клике на уведомление открываем чат с этим пользователем
-                const contactElement = document.querySelector(`.contact[data-contact-id="${from}"]`);
-                if (contactElement) {
-                    contactElement.click();
-                }
-                notification.remove();
-            };
-
-            document.body.appendChild(notification);
-
-            // Автоматическое закрытие через 5 секунд
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
-            }, 5000);
-        }
-
-        function selectContact(contactId, contactName) {
-            currentContact = contactId;
-            document.getElementById("current-contact").textContent = `Чат с ${contactName}`;
-            document.getElementById("message-input").disabled = false;
-            document.getElementById("send-btn").disabled = false;
-            document.getElementById("call-btn").disabled = false;
-
-            // Удаляем активный класс у всех контактов
-            document.querySelectorAll('.contact').forEach(el => {
-                el.classList.remove('active');
-            });
-
-            // Добавляем активный класс выбранному контакту
-            event.currentTarget.classList.add('active');
-
-            // Очищаем непрочитанные сообщения для этого контакта
-            clearUnreadBadge(contactId);
-
-            // Очищаем сообщения и загружаем историю чата
-            document.getElementById("messages").innerHTML = "";
-            loadMessageHistory(contactId);
-
-            // В конец функции selectContact добавим:
-if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.log("WebSocket not connected, attempting to reconnect...");
-    connectWebSocket();
-}
-        }
-
-        async function loadMessageHistory(contactId) {
-            try {
-                const response = await fetch(`/get-messages?user_id=${userId}&contact_id=${contactId}`);
-                const messages = await response.json();
-
-                messages.forEach(msg => {
-                    const isReceived = msg.sender_id != userId;
-                    displayMessage(
-                        isReceived ? msg.sender_username : username,
-                        msg.message,
-                        isReceived,
-                        msg.timestamp
-                    );
-                });
-            } catch (error) {
-                console.error("Ошибка загрузки истории сообщений:", error);
-            }
-        }
-
-        function showNewContactModal() {
-            document.getElementById("contact-username").value = "";
-            document.getElementById("contact-error").textContent = "";
-            document.getElementById("new-contact-modal").style.display = 'block';
-            document.getElementById("contact-username").focus();
-        }
-
-        function hideNewContactModal() {
-            document.getElementById("new-contact-modal").style.display = 'none';
-        }
-
-        async function addContact() {
-    const contactUsername = document.getElementById("contact-username").value.trim();
-    const errorElement = document.getElementById("contact-error");
-    errorElement.textContent = "";
-
-    if (!contactUsername) {
-        errorElement.textContent = "Введите имя пользователя";
-        return;
-    }
-
-    if (!contactUsername.startsWith('#')) {
-        errorElement.textContent = "Имя должно начинаться с #";
-        return;
-    }
-
-    try {
-        const response = await fetch('/add-contact', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                user_id: userId,
-                contact_username: contactUsername
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            // Обновляем список контактов
-            const contactsList = document.getElementById("contacts-list");
-            const newContact = document.createElement('div');
-            newContact.className = 'contact';
-            newContact.dataset.contactId = result.contact_id;
-            newContact.innerHTML = `
-                ${result.contact_username}
-                <span class="contact-remove" onclick="removeContact(event, '${result.contact_id}')">×</span>
-            `;
-            newContact.onclick = function() {
-                selectContact(result.contact_id, result.contact_username);
-            };
-
-            contactsList.appendChild(newContact);
-            document.getElementById("contact-username").value = "";
-            hideNewContactModal();
-
-            // Выбираем новый контакт
-            selectContact(result.contact_id, result.contact_username);
-        } else {
-            errorElement.textContent = result.message || "Не удалось добавить контакт";
-        }
-    } catch (error) {
-        console.error("Ошибка добавления контакта:", error);
-        errorElement.textContent = "Ошибка при добавлении контакта";
-    }
-}
-
-        async function removeContact(event, contactId) {
-            event.stopPropagation(); // Предотвращаем срабатывание selectContact
-
-            if (!confirm("Удалить контакт?")) return;
-
-            try {
-                const response = await fetch('/remove-contact', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
+            ws.onopen = () => {
+                updateStatus("Connected");
+                console.log("WebSocket connected");
+                if (currentContact) {
+                    ws.send(JSON.stringify({
+                        type: "reconnect",
                         user_id: userId,
-                        contact_id: contactId
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // Удаляем контакт из списка
-                    const contactElement = document.querySelector(`.contact[data-contact-id="${contactId}"]`);
-                    if (contactElement) {
-                        contactElement.remove();
-                    }
-
-                    // Если удаленный контакт был текущим, очищаем чат
-                    if (currentContact === contactId) {
-                        currentContact = null;
-                        document.getElementById("current-contact").textContent = "Выберите контакт для чата";
-                        document.getElementById("messages").innerHTML = "";
-                        document.getElementById("message-input").disabled = true;
-                        document.getElementById("send-btn").disabled = true;
-                        document.getElementById("call-btn").disabled = true;
-                    }
-                } else {
-                    alert(result.message || "Не удалось удалить контакт");
+                        contact_id: currentContact
+                    }));
                 }
-            } catch (error) {
-                console.error("Ошибка удаления контакта:", error);
-                alert("Ошибка при удалении контакта");
-            }
+            };
+
+            ws.onclose = () => {
+                updateStatus("Disconnected");
+                console.log("WebSocket disconnected, reconnecting...");
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                updateStatus("Error");
+            };
+
+            ws.onmessage = (event) => {
+                console.log("WebSocket message received:", event.data);
+                const data = JSON.parse(event.data);
+
+                if (data.type === "message") {
+                    displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
+                }
+                else if (data.type === "call_incoming") {
+                    showIncomingCall(data.from, data.call_id, data.is_audio_only);
+                }
+                else if (data.type === "call_waiting") {
+                    showWaitingNotification(data.call_id);
+                }
+                else if (data.type === "call_accepted") {
+                    handleCallAccepted(data.call_id);
+                }
+                else if (data.type === "call_rejected") {
+                    handleCallRejected(data.by);
+                }
+            };
         }
 
-        function sendMessage() {
-    const input = document.getElementById("message-input");
-    const message = input.value.trim();
-    if (!message || !currentContact) return;
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        alert("Соединение потеряно. Переподключаемся...");
-        connectWebSocket();
-        return;
-    }
-
-    try {
-        ws.send(JSON.stringify({
-            type: "message",
-            to: currentContact,
-            message: message
-        }));
-        input.value = "";
-    } catch (err) {
-        console.error("Ошибка отправки:", err);
-        alert("Не удалось отправить сообщение. Обновите страницу.");
-    }
-
-
-        function displayMessage(sender, message, isReceived, timestamp) {
-            const messagesDiv = document.getElementById("messages");
-            const messageDiv = document.createElement("div");
-            messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
-
-            const time = new Date(timestamp).toLocaleTimeString();
-            messageDiv.innerHTML = `
-                <strong>${sender}:</strong> ${message}
-                <div class="timestamp">${time}</div>
-            `;
-
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        function startAudioCall() {
-            if (!currentContact) {
-                alert("Пожалуйста, выберите контакт сначала");
-                return;
-            }
-
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Соединение потеряно. Переподключение...");
-                connectWebSocket();
-                return;
-            }
-
-            ws.send(JSON.stringify({
-                type: "call_request",
-                to: currentContact,
-                is_audio_only: true
-            }));
-        }
-
-        function showIncomingCall(from, callId) {
+        function showIncomingCall(from, callId, isAudioOnly) {
             const notification = document.createElement('div');
             notification.className = 'call-notification';
             notification.innerHTML = `
-                <h3>Входящий аудио звонок от ${from}</h3>
+                <h3>Incoming audio call from ${from}</h3>
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                    <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Принять</button>
-                    <button onclick="rejectCall('${callId}')" style="background: #f44336;">Отклонить</button>
+                    <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Accept</button>
+                    <button onclick="rejectCall('${callId}')" style="background: #f44336;">Reject</button>
                 </div>
             `;
             document.body.appendChild(notification);
@@ -610,7 +156,7 @@ if (!ws || ws.readyState !== WebSocket.OPEN) {
             document.getElementById('waiting-notification').style.display = 'block';
 
             callTimeout = setTimeout(() => {
-                alert("Звонок отклонен. Получатель не ответил.");
+                alert("Call timed out. No answer from recipient.");
                 hideWaitingNotification();
             }, 30000);
         }
@@ -654,22 +200,103 @@ if (!ws || ws.readyState !== WebSocket.OPEN) {
 
         function handleCallRejected(by) {
             hideWaitingNotification();
-            alert(`${by} отклонил ваш звонок`);
+            alert(`${by} declined your call`);
+        }
+
+        function startAudioCall() {
+            if (!currentContact) {
+                alert("Please select a contact first");
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Connection lost. Reconnecting...");
+                connectWebSocket();
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                type: "call_request",
+                to: currentContact,
+                is_audio_only: true
+            }));
+
+            alert(`Starting audio call with ${currentContact}...`);
+        }
+
+        function startChat() {
+            const contactId = document.getElementById("contact-id").value.trim();
+            if (!contactId) {
+                alert("Please enter contact ID");
+                return;
+            }
+
+            if (contactId === userId) {
+                alert("You can't chat with yourself!");
+                return;
+            }
+
+            currentContact = contactId;
+            document.getElementById("init-screen").style.display = "none";
+            document.getElementById("chat-container").style.display = "block";
+            document.getElementById("contact-name").textContent = contactId;
+            document.getElementById("messages").innerHTML = "";
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("message-input");
+            const message = input.value.trim();
+
+            if (!message) return;
+            if (!currentContact) {
+                alert("Please select a contact first");
+                return;
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Connection lost. Reconnecting...");
+                connectWebSocket();
+                return;
+            }
+
+            try {
+                ws.send(JSON.stringify({
+                    type: "message",
+                    to: currentContact,
+                    message: message
+                }));
+                displayMessage(userId, message, false, new Date().toISOString());
+                input.value = "";
+            } catch (e) {
+                console.error("Error sending message:", e);
+                alert("Failed to send message");
+            }
+        }
+
+        function displayMessage(sender, message, isReceived, timestamp) {
+            const messagesDiv = document.getElementById("messages");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${isReceived ? 'received' : 'sent'}`;
+
+            const time = new Date(timestamp).toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <strong>${sender}:</strong> ${message}
+                <div class="timestamp">${time}</div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
-
             document.getElementById("message-input").addEventListener("keypress", (e) => {
                 if (e.key === "Enter") sendMessage();
             });
-
-            // Проверяем, есть ли контакты, и выбираем первый, если есть
-            const contacts = document.querySelectorAll('.contact');
-            if (contacts.length > 0) {
-                contacts[0].click();
-            }
         });
     </script>
 </body>
