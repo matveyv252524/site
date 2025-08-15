@@ -20,47 +20,39 @@ templates = Jinja2Templates(directory="templates")
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        self.pending_calls: Dict[str, dict] = {}
-        self.user_notifications: Dict[str, List[dict]] = {}
+        self.active_calls: Dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
-        logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
-
-        # Отправляем ожидающие уведомления при подключении
-        if user_id in self.user_notifications:
-            for notification in self.user_notifications[user_id]:
-                await self.send_json(user_id, notification)
-            self.user_notifications[user_id] = []
-
-    async def send_json(self, receiver_id: str, message: dict):
-        if receiver_id in self.active_connections:
-            try:
-                await self.active_connections[receiver_id].send_json(message)
-                return True
-            except Exception as e:
-                logger.error(f"Error sending to {receiver_id}: {str(e)}")
-                del self.active_connections[receiver_id]
-                return False
-        else:
-            # Сохраняем уведомление, если пользователь не в сети
-            if receiver_id not in self.user_notifications:
-                self.user_notifications[receiver_id] = []
-            self.user_notifications[receiver_id].append(message)
-            logger.info(f"Notification queued for {receiver_id}")
-            return False
+        logger.info(f"User {user_id} connected. Active connections: {len(self.active_connections)}")
 
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
             del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected")
 
+    async def send_personal_message(self, message: dict, user_id: str):
+        if user_id in self.active_connections:
+            try:
+                await self.active_connections[user_id].send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending to {user_id}: {str(e)}")
+                self.disconnect(user_id)
+
+    async def broadcast(self, message: dict, exclude: str = None):
+        for user_id, connection in self.active_connections.items():
+            if user_id != exclude:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to {user_id}: {str(e)}")
+                    self.disconnect(user_id)
+
 
 manager = ConnectionManager()
 
 
-# Инициализация базы данных
 def init_db():
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -100,12 +92,10 @@ def init_db():
 init_db()
 
 
-# Хэширование пароля
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-# Проверка пользователя
 def authenticate_user(username: str, password: str) -> Optional[dict]:
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -117,7 +107,6 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         return None
 
 
-# Регистрация пользователя
 def register_user(username: str, password: str) -> Optional[dict]:
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return None
@@ -135,7 +124,6 @@ def register_user(username: str, password: str) -> Optional[dict]:
         return None
 
 
-# Получение контактов пользователя
 def get_user_contacts(user_id: int):
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -148,7 +136,6 @@ def get_user_contacts(user_id: int):
         return [{"id": row[0], "username": row[1]} for row in cursor.fetchall()]
 
 
-# Получение истории сообщений
 def get_message_history(user_id: int, contact_id: int):
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -163,7 +150,6 @@ def get_message_history(user_id: int, contact_id: int):
         return cursor.fetchall()
 
 
-# Сохранение сообщения
 def save_message(sender_id: int, receiver_id: int, message: str):
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -174,7 +160,6 @@ def save_message(sender_id: int, receiver_id: int, message: str):
         conn.commit()
 
 
-# Получение username по ID
 def get_username(user_id: int) -> str:
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
@@ -183,7 +168,6 @@ def get_username(user_id: int) -> str:
         return result[0] if result else "unknown"
 
 
-# Маршруты
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -262,19 +246,16 @@ async def chat(request: Request, user_id: str):
 async def add_contact(request: Request):
     data = await request.json()
     user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username").strip().lower()  # Нормализуем username
+    contact_username = data.get("contact_username").strip().lower()
 
     if not user_id or not contact_username:
         return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
 
-    # Проверка формата username
     if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
         return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
 
     with sqlite3.connect('messenger.db') as conn:
         cursor = conn.cursor()
-
-        # Получаем username текущего пользователя
         cursor.execute('SELECT username FROM users WHERE id = ?', (user_id,))
         current_user = cursor.fetchone()
 
@@ -283,11 +264,9 @@ async def add_contact(request: Request):
 
         current_username = current_user[0].lower()
 
-        # Проверяем, не пытается ли пользователь добавить себя (сравниваем нормализованные username)
         if contact_username == current_username:
             return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-        # Ищем пользователя для добавления (сравниваем нормализованные username)
         cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = ?', (contact_username,))
         contact = cursor.fetchone()
 
@@ -296,7 +275,6 @@ async def add_contact(request: Request):
 
         contact_id, contact_username = contact[0], contact[1]
 
-        # Проверяем, не добавлен ли уже этот контакт
         cursor.execute('''
             SELECT id FROM contacts 
             WHERE user_id = ? AND contact_id = ?
@@ -305,7 +283,6 @@ async def add_contact(request: Request):
         if cursor.fetchone():
             return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
 
-        # Добавляем контакт
         try:
             cursor.execute('''
                 INSERT INTO contacts (user_id, contact_id) 
@@ -385,10 +362,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 receiver_id = data["to"]
                 message_text = data["message"]
 
-                # Сохраняем сообщение в БД
                 save_message(int(user_id), int(receiver_id), message_text)
 
-                # Проверяем, есть ли взаимный контакт
                 with sqlite3.connect('messenger.db') as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
@@ -397,93 +372,95 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     ''', (receiver_id, user_id))
                     is_mutual = cursor.fetchone() is not None
 
-                # Отправляем сообщение
-                await manager.send_json(receiver_id, {
+                await manager.send_personal_message({
                     "type": "message",
                     "from": user_id,
                     "message": message_text,
                     "timestamp": str(datetime.now()),
                     "is_mutual": is_mutual
-                })
+                }, receiver_id)
 
-                # Если нет взаимного контакта, отправляем уведомление
                 if not is_mutual:
-                    await manager.send_json(receiver_id, {
+                    await manager.send_personal_message({
                         "type": "notification",
                         "from": user_id,
-                        "message": f"New message from #{get_username(user_id)}: {message_text}",
+                        "message": f"New message from #{get_username(int(user_id))}: {message_text}",
                         "timestamp": str(datetime.now())
-                    })
+                    }, receiver_id)
 
-            elif data["type"] == "call_request":
-                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
-                manager.pending_calls[call_id] = {
-                    "from": user_id,
-                    "to": data["to"],
-                    "status": "waiting"
-                }
-                await manager.send_json(data["to"], {
+            elif data["type"] == "call_initiate":
+                call_id = str(uuid.uuid4())
+                await manager.send_personal_message({
                     "type": "call_incoming",
                     "from": user_id,
                     "call_id": call_id,
                     "is_audio_only": True
-                })
-                await websocket.send_json({
-                    "type": "call_waiting",
-                    "call_id": call_id,
-                    "to": data["to"]
-                })
+                }, data["to"])
 
             elif data["type"] == "call_accept":
-                call_id = data["call_id"]
-                if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
-                        "type": "call_accepted",
-                        "call_id": call_id,
-                        "by": user_id
-                    })
-                    del manager.pending_calls[call_id]
+                await manager.send_personal_message({
+                    "type": "call_accepted",
+                    "from": user_id,
+                    "call_id": data["call_id"]
+                }, data["to"])
 
             elif data["type"] == "call_reject":
-                call_id = data["call_id"]
-                if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
-                        "type": "call_rejected",
-                        "call_id": call_id,
-                        "by": user_id
-                    })
-                    del manager.pending_calls[call_id]
+                await manager.send_personal_message({
+                    "type": "call_rejected",
+                    "from": user_id,
+                    "call_id": data["call_id"]
+                }, data["to"])
 
             elif data["type"] == "webrtc_offer":
-                await manager.send_json(data["to"], {
+                await manager.send_personal_message({
                     "type": "webrtc_offer",
                     "from": user_id,
                     "call_id": data["call_id"],
                     "offer": data["offer"],
                     "is_audio_only": True
-                })
+                }, data["to"])
 
             elif data["type"] == "webrtc_answer":
-                await manager.send_json(data["to"], {
+                await manager.send_personal_message({
                     "type": "webrtc_answer",
                     "from": user_id,
                     "call_id": data["call_id"],
                     "answer": data["answer"]
-                })
+                }, data["to"])
 
             elif data["type"] == "ice_candidate":
-                await manager.send_json(data["to"], {
+                await manager.send_personal_message({
                     "type": "ice_candidate",
                     "from": user_id,
                     "call_id": data["call_id"],
                     "candidate": data["candidate"]
-                })
+                }, data["to"])
+
+            elif data["type"] == "call_end":
+                await manager.send_personal_message({
+                    "type": "call_ended",
+                    "from": user_id,
+                    "call_id": data["call_id"]
+                }, data["to"])
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
     except Exception as e:
         logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
+
+
+@app.get("/call/{call_id}", response_class=HTMLResponse)
+async def call_page(request: Request, call_id: str):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    return templates.TemplateResponse("call.html", {
+        "request": request,
+        "call_id": call_id,
+        "user_id": user_id
+    })
 
 
 if __name__ == "__main__":
