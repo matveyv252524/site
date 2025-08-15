@@ -276,77 +276,40 @@
 
     function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const host = window.location.host;
-    const wsUrl = `${protocol}${host}/ws/${userId}`;
-
-    ws = new WebSocket(wsUrl);
+    const wsUrl = `${protocol}${window.location.host}/ws/${userId}`;
     console.log(`Connecting to WebSocket: ${wsUrl}`);
 
+    ws = new WebSocket(wsUrl);
+
     ws.onopen = () => {
-        console.log("WebSocket connected successfully");
+        console.log("WebSocket connected");
         updateStatus("Подключено");
-
-        // Проверяем, есть ли контакты, и выбираем первый, если есть
-        const contacts = document.querySelectorAll('.contact');
-        if (contacts.length > 0) {
-            contacts[0].click();
-        }
+        // Загружаем контакты, если они есть
+        const firstContact = document.querySelector('.contact');
+        if (firstContact) firstContact.click();
     };
 
-    ws.onclose = (event) => {
-        console.log(`WebSocket closed. Code: ${event.code}, reason: ${event.reason}`);
+    ws.onclose = (e) => {
+        console.error(`WebSocket closed: ${e.code} ${e.reason}`);
         updateStatus("Отключено");
-
-        // Пытаемся переподключиться через 3 секунды
-        setTimeout(() => {
-            console.log("Attempting to reconnect...");
-            connectWebSocket();
-        }, 3000);
+        // Переподключение через 3 секунды
+        setTimeout(connectWebSocket, 3000);
     };
 
-    ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+    ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
         updateStatus("Ошибка");
     };
 
-    ws.onmessage = (event) => {
-        console.log("Received WebSocket message:", event.data);
+    ws.onmessage = (e) => {
         try {
-            const data = JSON.parse(event.data);
-
-            if (data.type === "message") {
-                const isReceived = data.from != userId;
-                displayMessage(
-                    isReceived ? `#${data.from}` : username,
-                    data.message,
-                    isReceived,
-                    data.timestamp
-                );
-
-                if (isReceived && currentContact !== data.from) {
-                    addUnreadBadge(data.from);
-                    showNotification(data.from, data.message);
-                }
-            }
-            else if (data.type === "call_incoming") {
-                showIncomingCall(get_username(data.from), data.call_id);
-            }
-            else if (data.type === "call_accepted") {
-                handleCallAccepted(data.call_id);
-            }
-            else if (data.type === "call_rejected") {
-                handleCallRejected(data.by);
-            }
-        } catch (e) {
-            console.error("Error processing message:", e);
+            const data = JSON.parse(e.data);
+            console.log("WS message:", data);
+            // Обработка сообщений...
+        } catch (err) {
+            console.error("Failed to parse WebSocket message:", err);
         }
     };
-}
-
-// Добавим вспомогательную функцию
-function get_username(user_id) {
-    // В реальном приложении это должно быть API-запросом
-    return user_id; // временное решение
 }
 
         function addUnreadBadge(contactId) {
@@ -572,24 +535,28 @@ if (!ws || ws.readyState !== WebSocket.OPEN) {
         }
 
         function sendMessage() {
-            const input = document.getElementById("message-input");
-            const message = input.value.trim();
+    const input = document.getElementById("message-input");
+    const message = input.value.trim();
+    if (!message || !currentContact) return;
 
-            if (!message || !currentContact) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("Соединение потеряно. Переподключаемся...");
+        connectWebSocket();
+        return;
+    }
 
-            try {
-                ws.send(JSON.stringify({
-                    type: "message",
-                    to: currentContact,
-                    message: message
-                }));
-                displayMessage(username, message, false, new Date().toISOString());
-                input.value = "";
-            } catch (e) {
-                console.error("Ошибка отправки сообщения:", e);
-                alert("Не удалось отправить сообщение");
-            }
-        }
+    try {
+        ws.send(JSON.stringify({
+            type: "message",
+            to: currentContact,
+            message: message
+        }));
+        input.value = "";
+    } catch (err) {
+        console.error("Ошибка отправки:", err);
+        alert("Не удалось отправить сообщение. Обновите страницу.");
+    }
+
 
         function displayMessage(sender, message, isReceived, timestamp) {
             const messagesDiv = document.getElementById("messages");
