@@ -7,7 +7,6 @@ import uuid
 import logging
 import hashlib
 import psycopg2
-from urllib.parse import urlparse
 from typing import Optional, Dict, List
 
 # Настройка логирования
@@ -21,15 +20,19 @@ templates = Jinja2Templates(directory="templates")
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db_connection():
-    result = urlparse(DATABASE_URL)
-    conn = psycopg2.connect(
-        dbname=result.path[1:],
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=result.port
-    )
-    return conn
+    try:
+        conn = psycopg2.connect(
+            host="your-hostname-from-render",
+            database="your-database-name",
+            user="your-username",
+            password="your-password-from-render",
+            port=5432,
+            sslmode='require'
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"Database connection failed: {str(e)}")
+        raise
 
 class ConnectionManager:
     def __init__(self):
