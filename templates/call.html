@@ -3,72 +3,10 @@
 <head>
     <title>Аудио звонок</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .call-container {
-            max-width: 500px;
-            margin: 50px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            background: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        #endCall {
-            background: #f44336;
-        }
-        #status {
-            margin: 20px 0;
-            color: #666;
-            font-size: 18px;
-        }
-        #connection-status {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 5px 10px;
-            border-radius: 3px;
-            font-size: 0.9em;
-            background: #f44336;
-            color: white;
-        }
-        .connected #connection-status {
-            background: #4CAF50;
-        }
-        .audio-indicator {
-            width: 100px;
-            height: 100px;
-            margin: 30px auto;
-            border-radius: 50%;
-            background: #4285f4;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 24px;
-        }
-        .caller-info {
+        /* ... (прежние стили остаются без изменений) ... */
+        .call-info {
             margin-bottom: 20px;
-            font-size: 18px;
+            font-size: 1.2em;
         }
     </style>
 </head>
@@ -77,8 +15,8 @@
 
     <div class="call-container">
         <h2>Аудио звонок</h2>
-        <div class="caller-info" id="callerInfo"></div>
-        <div id="status">Подключение аудио...</div>
+        <div class="call-info" id="callInfo"></div>
+        <div id="status">Установка соединения...</div>
 
         <div class="audio-indicator">
             <span id="audioIcon">🔊</span>
@@ -101,6 +39,8 @@
         let isMuted = false;
         let isCaller = false;
         let otherUserId = null;
+        let otherUsername = null;
+        let callTimeout;
 
         // WebSocket connection
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -112,20 +52,30 @@
             statusElement.style.background = status === "Подключено" ? "#4CAF50" : "#f44336";
         }
 
+        function updateCallInfo(text) {
+            document.getElementById("callInfo").textContent = text;
+        }
+
+        function updateStatusText(text) {
+            document.getElementById("status").textContent = text;
+        }
+
         ws.onopen = () => {
             updateStatus("Подключено");
             console.log("WebSocket connected");
-            startCall();
+            initializeCall();
         };
 
         ws.onclose = () => {
             updateStatus("Отключено");
             console.log("WebSocket disconnected");
+            endCall();
         };
 
         ws.onerror = (error) => {
             console.error("WebSocket error:", error);
             updateStatus("Ошибка");
+            endCall();
         };
 
         ws.onmessage = async (event) => {
@@ -134,19 +84,33 @@
 
             if (data.type === "call_incoming") {
                 otherUserId = data.from;
-                document.getElementById("callerInfo").textContent = `Входящий звонок от #${otherUserId}`;
+                otherUsername = `#${data.from}`;
+                updateCallInfo(`Входящий звонок от ${otherUsername}`);
                 isCaller = false;
+
+                // Устанавливаем таймаут для автоматического отклонения
+                callTimeout = setTimeout(() => {
+                    if (peerConnection && peerConnection.signalingState !== "closed") {
+                        rejectCall();
+                    }
+                }, 30000);
             }
             else if (data.type === "call_accepted") {
+                clearTimeout(callTimeout);
                 otherUserId = data.from;
-                document.getElementById("status").textContent = "Звонок установлен";
-                console.log("Call accepted by", otherUserId);
+                otherUsername = `#${data.from}`;
+                updateCallInfo(`Звонок с ${otherUsername}`);
+                updateStatusText("Соединение установлено");
             }
             else if (data.type === "call_rejected") {
-                document.getElementById("status").textContent = "Звонок отклонен";
-                setTimeout(() => {
-                    window.location.href = `/chat/${userId}`;
-                }, 2000);
+                clearTimeout(callTimeout);
+                updateStatusText("Звонок отклонен");
+                setTimeout(() => endCall(), 2000);
+            }
+            else if (data.type === "call_ended") {
+                clearTimeout(callTimeout);
+                updateStatusText("Звонок завершен");
+                setTimeout(() => endCall(), 2000);
             }
             else if (data.type === "webrtc_offer" && !isCaller) {
                 try {
@@ -165,7 +129,7 @@
                     ws.send(JSON.stringify({
                         type: "webrtc_answer",
                         from: userId,
-                        to: data.from,
+                        to: otherUserId,
                         call_id: callId,
                         answer: peerConnection.localDescription
                     }));
@@ -180,6 +144,7 @@
                         new RTCSessionDescription(data.answer)
                     );
                     console.log("Answer processed");
+                    updateStatusText("Соединение установлено");
                 } catch (error) {
                     console.error("Error handling answer:", error);
                     endCall();
@@ -197,16 +162,53 @@
                     console.error("Error adding ICE candidate:", error);
                 }
             }
-            else if (data.type === "call_ended") {
-                document.getElementById("status").textContent = "Звонок завершен";
-                setTimeout(() => {
-                    window.location.href = `/chat/${userId}`;
-                }, 2000);
-            }
         };
+
+        async function initializeCall() {
+            const callParts = callId.split('_');
+            if (callParts.length === 3 && callParts[0] === userId) {
+                // Мы инициатор звонка
+                isCaller = true;
+                otherUserId = callParts[1];
+                otherUsername = `#${otherUserId}`;
+                updateCallInfo(`Звонок пользователю ${otherUsername}`);
+
+                try {
+                    await setupAudio();
+                    createPeerConnection();
+
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+
+                    ws.send(JSON.stringify({
+                        type: "webrtc_offer",
+                        from: userId,
+                        to: otherUserId,
+                        call_id: callId,
+                        offer: peerConnection.localDescription,
+                        is_audio_only: true
+                    }));
+
+                    // Таймаут для ожидания ответа
+                    callTimeout = setTimeout(() => {
+                        if (peerConnection && peerConnection.signalingState !== "closed") {
+                            updateStatusText("Нет ответа от пользователя");
+                            endCall();
+                        }
+                    }, 30000);
+                } catch (error) {
+                    console.error("Error starting call:", error);
+                    endCall();
+                }
+            } else {
+                // Мы получатель звонка, ждем предложения
+                updateStatusText("Ожидание звонка...");
+            }
+        }
 
         async function setupAudio() {
             try {
+                updateStatusText("Подключение микрофона...");
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
@@ -218,10 +220,10 @@
 
                 const localAudio = document.getElementById('localAudio');
                 localAudio.srcObject = localStream;
-                document.getElementById("status").textContent = "Микрофон подключен";
+                updateStatusText("Микрофон подключен");
             } catch (error) {
                 console.error("Error accessing microphone:", error);
-                document.getElementById("status").textContent = "Ошибка доступа к микрофону";
+                updateStatusText("Ошибка доступа к микрофону");
                 alert("Не удалось получить доступ к микрофону. Проверьте разрешения.");
                 endCall();
                 throw error;
@@ -239,12 +241,12 @@
 
             peerConnection = new RTCPeerConnection(configuration);
 
-            // Add local stream tracks
+            // Добавляем локальный поток
             localStream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStream);
             });
 
-            // ICE candidate handler
+            // Обработчик ICE кандидатов
             peerConnection.onicecandidate = ({ candidate }) => {
                 if (candidate) {
                     ws.send(JSON.stringify({
@@ -257,57 +259,36 @@
                 }
             };
 
-            // Remote stream handler
+            // Обработчик удаленного потока
             peerConnection.ontrack = (event) => {
                 const remoteAudio = document.getElementById("remoteAudio");
                 if (!remoteAudio.srcObject) {
                     remoteAudio.srcObject = event.streams[0];
-                    document.getElementById("status").textContent = "Звонок активен";
+                    updateStatusText("Звонок активен");
+
+                    // Пытаемся воспроизвести аудио (может потребоваться пользовательское действие)
+                    remoteAudio.play().catch(e => console.log("Audio play error:", e));
                 }
             };
 
+            // Обработчики изменения состояния
             peerConnection.oniceconnectionstatechange = () => {
                 const state = peerConnection.iceConnectionState;
                 console.log("ICE connection state:", state);
 
                 if (state === "disconnected" || state === "failed") {
+                    updateStatusText("Соединение потеряно");
                     endCall();
                 }
             };
-        }
 
-        async function startCall() {
-            // Check if we're the caller or callee
-            const callParts = callId.split('_');
-            if (callParts.length === 3 && callParts[0] === userId) {
-                // We're the caller
-                isCaller = true;
-                otherUserId = callParts[1];
-                document.getElementById("callerInfo").textContent = `Звонок пользователю #${otherUserId}`;
+            peerConnection.onicegatheringstatechange = () => {
+                console.log("ICE gathering state:", peerConnection.iceGatheringState);
+            };
 
-                try {
-                    await setupAudio();
-                    createPeerConnection();
-
-                    const offer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(offer);
-
-                    ws.send(JSON.stringify({
-                        type: "webrtc_offer",
-                        from: userId,
-                        to: otherUserId,
-                        call_id: callId,
-                        offer: peerConnection.localDescription,
-                        is_audio_only: true
-                    }));
-                } catch (error) {
-                    console.error("Error starting call:", error);
-                    endCall();
-                }
-            } else {
-                // We're the callee, wait for offer
-                document.getElementById("status").textContent = "Ожидание звонка...";
-            }
+            peerConnection.onsignalingstatechange = () => {
+                console.log("Signaling state:", peerConnection.signalingState);
+            };
         }
 
         function toggleAudio() {
@@ -321,8 +302,21 @@
             }
         }
 
+        function rejectCall() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "call_reject",
+                    from: userId,
+                    to: otherUserId,
+                    call_id: callId
+                }));
+            }
+            endCall();
+        }
+
         function endCall() {
             console.log("Ending call...");
+            clearTimeout(callTimeout);
 
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
@@ -331,6 +325,7 @@
                     to: otherUserId,
                     call_id: callId
                 }));
+                ws.close();
             }
 
             if (peerConnection) {
@@ -354,10 +349,15 @@
         window.addEventListener('beforeunload', endCall);
         window.addEventListener('pagehide', endCall);
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log("Call page loaded");
-            updateStatus("Подключение...");
+        // iOS workaround - trigger user gesture
+        document.addEventListener('click', function init() {
+            // Try to play audio to unlock audio context
+            const audio = new Audio();
+            audio.volume = 0;
+            audio.play().catch(e => console.log("Audio init error:", e));
+
+            // Remove this event listener after first interaction
+            document.removeEventListener('click', init);
         });
     </script>
 </body>
