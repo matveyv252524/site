@@ -362,8 +362,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 receiver_id = data["to"]
                 message_text = data["message"]
 
+                # Сохраняем сообщение в БД
                 save_message(int(user_id), int(receiver_id), message_text)
 
+                # Проверяем, есть ли взаимный контакт
                 with sqlite3.connect('messenger.db') as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
@@ -372,6 +374,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     ''', (receiver_id, user_id))
                     is_mutual = cursor.fetchone() is not None
 
+                # Отправляем сообщение получателю
                 await manager.send_personal_message({
                     "type": "message",
                     "from": user_id,
@@ -380,22 +383,30 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "is_mutual": is_mutual
                 }, receiver_id)
 
+                # Если нет взаимного контакта, отправляем уведомление
                 if not is_mutual:
                     await manager.send_personal_message({
                         "type": "notification",
                         "from": user_id,
-                        "message": f"New message from #{get_username(int(user_id))}: {message_text}",
+                        "message": f"Новое сообщение от #{get_username(int(user_id))}",
                         "timestamp": str(datetime.now())
                     }, receiver_id)
 
             elif data["type"] == "call_initiate":
-                call_id = str(uuid.uuid4())
+                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
                 await manager.send_personal_message({
                     "type": "call_incoming",
                     "from": user_id,
                     "call_id": call_id,
                     "is_audio_only": True
                 }, data["to"])
+
+                # Отправляем подтверждение инициатору
+                await manager.send_personal_message({
+                    "type": "call_waiting",
+                    "call_id": call_id,
+                    "to": data["to"]
+                }, user_id)
 
             elif data["type"] == "call_accept":
                 await manager.send_personal_message({
@@ -445,6 +456,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+        logger.info(f"User {user_id} disconnected")
     except Exception as e:
         logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
