@@ -473,7 +473,7 @@
         });
 
         const result = await response.json();
-        
+
         if (result.success) {
             // Обновляем список контактов
             const contactsList = document.getElementById("contacts-list");
@@ -487,11 +487,11 @@
             newContact.onclick = function() {
                 selectContact(result.contact_id, result.contact_username);
             };
-            
+
             contactsList.insertBefore(newContact, contactsList.firstChild);
             document.getElementById("contact-username").value = "";
             hideNewContactModal();
-            
+
             // Выбираем новый контакт
             selectContact(result.contact_id, result.contact_username);
         } else {
@@ -583,23 +583,62 @@
         }
 
         function startAudioCall() {
-            if (!currentContact) {
-                alert("Пожалуйста, выберите контакт сначала");
-                return;
-            }
-
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Соединение потеряно. Переподключение...");
-                connectWebSocket();
-                return;
-            }
-
-            ws.send(JSON.stringify({
-                type: "call_request",
-                to: currentContact,
-                is_audio_only: true
-            }));
+        if (!currentContact) {
+            alert("Пожалуйста, выберите контакт сначала");
+            return;
         }
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert("Соединение потеряно. Переподключение...");
+            connectWebSocket();
+            return;
+        }
+
+        // Генерируем уникальный ID звонка
+        const callId = `${userId}_${currentContact}_${Date.now()}`;
+
+        ws.send(JSON.stringify({
+            type: "call_initiate",
+            to: currentContact,
+            call_id: callId,
+            is_audio_only: true
+        }));
+
+        // Открываем страницу звонка
+        window.location.href = `/call/${callId}`;
+    }
+
+    function showIncomingCall(from, callId) {
+        const notification = document.createElement('div');
+        notification.className = 'call-notification';
+        notification.innerHTML = `
+            <h3>Входящий аудио звонок от ${from}</h3>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Принять</button>
+                <button onclick="rejectCall('${callId}')" style="background: #f44336;">Отклонить</button>
+            </div>
+        `;
+        document.body.appendChild(notification);
+    }
+
+    function acceptCall(callId) {
+        document.querySelector('.call-notification').remove();
+        ws.send(JSON.stringify({
+            type: "call_accept",
+            to: currentContact,
+            call_id: callId
+        }));
+        window.location.href = `/call/${callId}`;
+    }
+
+    function rejectCall(callId) {
+        document.querySelector('.call-notification').remove();
+        ws.send(JSON.stringify({
+            type: "call_reject",
+            to: currentContact,
+            call_id: callId
+        }));
+    }
 
         function showIncomingCall(from, callId) {
             const notification = document.createElement('div');
