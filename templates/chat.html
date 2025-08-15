@@ -274,74 +274,79 @@
             statusElement.style.background = status === "Подключено" ? "#4CAF50" : "#f44336";
         }
 
-        function connectWebSocket() {
-    // Определяем протокол (ws:// или wss://) в зависимости от текущего URL
+    function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
     const host = window.location.host;
     const wsUrl = `${protocol}${host}/ws/${userId}`;
 
-    // Создаем новое соединение WebSocket
-    try {
-        ws = new WebSocket(wsUrl);
-        console.log(`Попытка подключения к WebSocket по адресу: ${wsUrl}`);
+    ws = new WebSocket(wsUrl);
+    console.log(`Connecting to WebSocket: ${wsUrl}`);
 
-        // Обработчик открытия соединения
-        ws.onopen = () => {
-            console.log("WebSocket подключен успешно");
-            updateStatus("Подключено");
+    ws.onopen = () => {
+        console.log("WebSocket connected successfully");
+        updateStatus("Подключено");
 
-            // Проверяем состояние соединения (дополнительная проверка)
-            if (ws.readyState === WebSocket.OPEN) {
-                console.log("Соединение активно, статус подтверждён");
-            }
-        };
+        // Проверяем, есть ли контакты, и выбираем первый, если есть
+        const contacts = document.querySelectorAll('.contact');
+        if (contacts.length > 0) {
+            contacts[0].click();
+        }
+    };
 
-        // Обработчик закрытия соединения
-        ws.onclose = (event) => {
-            console.log(`WebSocket закрыт. Код: ${event.code}, причина: ${event.reason}`);
-            updateStatus("Отключено");
+    ws.onclose = (event) => {
+        console.log(`WebSocket closed. Code: ${event.code}, reason: ${event.reason}`);
+        updateStatus("Отключено");
 
-            // Пытаемся переподключиться через 3 секунды
-            setTimeout(() => {
-                console.log("Попытка переподключения...");
-                connectWebSocket();
-            }, 3000);
-        };
+        // Пытаемся переподключиться через 3 секунды
+        setTimeout(() => {
+            console.log("Attempting to reconnect...");
+            connectWebSocket();
+        }, 3000);
+    };
 
-        // Обработчик ошибок
-        ws.onerror = (error) => {
-            console.error("Ошибка WebSocket:", error);
-            updateStatus("Ошибка");
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        updateStatus("Ошибка");
+    };
 
-            // В случае ошибки также пытаемся переподключиться
-            setTimeout(() => {
-                console.log("Попытка переподключения после ошибки...");
-                connectWebSocket();
-            }, 3000);
-        };
-
-        // Обработчик входящих сообщений (оставляем ваш существующий код)
-        ws.onmessage = (event) => {
-            console.log("Получено сообщение WebSocket:", event.data);
+    ws.onmessage = (event) => {
+        console.log("Received WebSocket message:", event.data);
+        try {
             const data = JSON.parse(event.data);
 
-            // Ваша существующая логика обработки сообщений...
             if (data.type === "message") {
-                // ... ваш код обработки сообщений ...
+                const isReceived = data.from != userId;
+                displayMessage(
+                    isReceived ? `#${data.from}` : username,
+                    data.message,
+                    isReceived,
+                    data.timestamp
+                );
+
+                if (isReceived && currentContact !== data.from) {
+                    addUnreadBadge(data.from);
+                    showNotification(data.from, data.message);
+                }
             }
-            // ... другие типы сообщений ...
-        };
+            else if (data.type === "call_incoming") {
+                showIncomingCall(get_username(data.from), data.call_id);
+            }
+            else if (data.type === "call_accepted") {
+                handleCallAccepted(data.call_id);
+            }
+            else if (data.type === "call_rejected") {
+                handleCallRejected(data.by);
+            }
+        } catch (e) {
+            console.error("Error processing message:", e);
+        }
+    };
+}
 
-    } catch (error) {
-        console.error("Критическая ошибка при создании WebSocket:", error);
-        updateStatus("Ошибка");
-
-        // Пытаемся переподключиться даже в случае ошибки создания
-        setTimeout(() => {
-            console.log("Попытка переподключения после критической ошибки...");
-            connectWebSocket();
-        }, 5000);
-    }
+// Добавим вспомогательную функцию
+function get_username(user_id) {
+    // В реальном приложении это должно быть API-запросом
+    return user_id; // временное решение
 }
 
         function addUnreadBadge(contactId) {
@@ -426,6 +431,12 @@
             // Очищаем сообщения и загружаем историю чата
             document.getElementById("messages").innerHTML = "";
             loadMessageHistory(contactId);
+
+            // В конец функции selectContact добавим:
+if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log("WebSocket not connected, attempting to reconnect...");
+    connectWebSocket();
+}
         }
 
         async function loadMessageHistory(contactId) {
@@ -468,6 +479,11 @@
         return;
     }
 
+    if (!contactUsername.startsWith('#')) {
+        errorElement.textContent = "Имя должно начинаться с #";
+        return;
+    }
+
     try {
         const response = await fetch('/add-contact', {
             method: 'POST',
@@ -496,7 +512,7 @@
                 selectContact(result.contact_id, result.contact_username);
             };
 
-            contactsList.insertBefore(newContact, contactsList.firstChild);
+            contactsList.appendChild(newContact);
             document.getElementById("contact-username").value = "";
             hideNewContactModal();
 
