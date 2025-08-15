@@ -131,8 +131,9 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     finally:
         conn.close()
 
+# В функции register_user обновим проверку имени пользователя
 def register_user(username: str, password: str) -> Optional[dict]:
-    if not username.startswith('#') or len(username) < 6 or len(username) > 16:
+    if not username.startswith('#') or len(username) < 2 or len(username) > 16:  # Уменьшил минимальную длину
         return None
 
     hashed_password = hash_password(password)
@@ -141,13 +142,14 @@ def register_user(username: str, password: str) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id',
+            'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id, username',
             (username, hashed_password)
         )
-        user_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
         conn.commit()
-        return {"id": user_id, "username": username}
-    except psycopg2.IntegrityError:
+        return {"id": result[0], "username": result[1]} if result else None
+    except psycopg2.IntegrityError as e:
+        logger.error(f"Registration error: {str(e)}")
         return None
     finally:
         conn.close()
@@ -295,48 +297,48 @@ async def chat(request: Request, user_id: str):
 async def add_contact(request: Request):
     data = await request.json()
     user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username").strip().lower()
+    contact_username = data.get("contact_username").strip()
 
     if not user_id or not contact_username:
         return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
 
-    if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
-        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
+    if not contact_username.startswith('#') or len(contact_username) < 2 or len(contact_username) > 16:
+        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 2-16 символов"}
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
 
-        cursor.execute('SELECT username FROM users WHERE id = %s', (user_id,))
+        # Проверяем существование текущего пользователя
+        cursor.execute('SELECT id, username FROM users WHERE id = %s', (user_id,))
         current_user = cursor.fetchone()
-
         if not current_user:
             return {"success": False, "message": "Текущий пользователь не найден"}
 
-        current_username = current_user[0].lower()
-
-        if contact_username == current_username:
-            return {"success": False, "message": "Вы не можете добавить самого себя"}
-
-        cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = %s', (contact_username,))
+        # Ищем контакт
+        cursor.execute('SELECT id, username FROM users WHERE username = %s', (contact_username,))
         contact = cursor.fetchone()
-
         if not contact:
             return {"success": False, "message": "Пользователь не найден"}
 
-        contact_id, contact_username = contact[0], contact[1]
+        contact_id, contact_username = contact
 
+        # Проверяем, не добавляем ли себя
+        if contact_id == user_id:
+            return {"success": False, "message": "Вы не можете добавить самого себя"}
+
+        # Проверяем, есть ли уже такой контакт
         cursor.execute('''
             SELECT id FROM contacts 
             WHERE user_id = %s AND contact_id = %s
         ''', (user_id, contact_id))
-
         if cursor.fetchone():
             return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
 
+        # Добавляем контакт
         cursor.execute('''
             INSERT INTO contacts (user_id, contact_id) 
-            VALUES (%s, %s) RETURNING id
+            VALUES (%s, %s)
         ''', (user_id, contact_id))
         conn.commit()
 
@@ -347,10 +349,11 @@ async def add_contact(request: Request):
             "message": "Контакт успешно добавлен"
         }
     except psycopg2.Error as e:
+        conn.rollback()
+        logger.error(f"Database error in add_contact: {str(e)}")
         return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
     finally:
         conn.close()
-
 @app.post("/remove-contact")
 async def remove_contact(request: Request):
     data = await request.json()
