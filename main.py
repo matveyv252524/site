@@ -19,21 +19,19 @@ templates = Jinja2Templates(directory="templates")
 # Подключение к PostgreSQL
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-
 def get_db_connection():
-    # Если используете переменную окружения DATABASE_URL напрямую
-    import os
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-
-    # Замените postgres:// на postgresql:// (для совместимости с SQLAlchemy)
-    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        conn = psycopg2.connect(
+            host="your-hostname-from-render",
+            database="your-database-name",
+            user="your-username",
+            password="your-password-from-render",
+            port=5432,
+            sslmode='require'
+        )
         return conn
     except Exception as e:
-        logger.error(f"Database connection error: {str(e)}")
+        logger.error(f"Database connection failed: {str(e)}")
         raise
 
 class ConnectionManager:
@@ -131,35 +129,23 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     finally:
         conn.close()
 
-# В функции register_user обновим проверку имени пользователя
 def register_user(username: str, password: str) -> Optional[dict]:
-    if not username.startswith('#') or len(username) < 2 or len(username) > 16:
-        logger.error(f"Invalid username format: {username}")
+    if not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return None
 
     hashed_password = hash_password(password)
-    logger.info(f"Registering user: {username}")
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id, username',
+            'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id',
             (username, hashed_password)
         )
-        result = cursor.fetchone()
+        user_id = cursor.fetchone()[0]
         conn.commit()
-        if result:
-            logger.info(f"User registered: ID={result[0]}, username={result[1]}")
-            return {"id": result[0], "username": result[1]}
-        else:
-            logger.error("No data returned after INSERT")
-            return None
-    except psycopg2.IntegrityError as e:
-        logger.error(f"Registration error (username taken?): {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected registration error: {e}")
+        return {"id": user_id, "username": username}
+    except psycopg2.IntegrityError:
         return None
     finally:
         conn.close()
@@ -307,48 +293,48 @@ async def chat(request: Request, user_id: str):
 async def add_contact(request: Request):
     data = await request.json()
     user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username").strip()
+    contact_username = data.get("contact_username").strip().lower()
 
     if not user_id or not contact_username:
         return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
 
-    if not contact_username.startswith('#') or len(contact_username) < 2 or len(contact_username) > 16:
-        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 2-16 символов"}
+    if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
+        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
 
-        # Проверяем существование текущего пользователя
-        cursor.execute('SELECT id, username FROM users WHERE id = %s', (user_id,))
+        cursor.execute('SELECT username FROM users WHERE id = %s', (user_id,))
         current_user = cursor.fetchone()
+
         if not current_user:
             return {"success": False, "message": "Текущий пользователь не найден"}
 
-        # Ищем контакт
-        cursor.execute('SELECT id, username FROM users WHERE username = %s', (contact_username,))
+        current_username = current_user[0].lower()
+
+        if contact_username == current_username:
+            return {"success": False, "message": "Вы не можете добавить самого себя"}
+
+        cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = %s', (contact_username,))
         contact = cursor.fetchone()
+
         if not contact:
             return {"success": False, "message": "Пользователь не найден"}
 
-        contact_id, contact_username = contact
+        contact_id, contact_username = contact[0], contact[1]
 
-        # Проверяем, не добавляем ли себя
-        if contact_id == user_id:
-            return {"success": False, "message": "Вы не можете добавить самого себя"}
-
-        # Проверяем, есть ли уже такой контакт
         cursor.execute('''
             SELECT id FROM contacts 
             WHERE user_id = %s AND contact_id = %s
         ''', (user_id, contact_id))
+
         if cursor.fetchone():
             return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
 
-        # Добавляем контакт
         cursor.execute('''
             INSERT INTO contacts (user_id, contact_id) 
-            VALUES (%s, %s)
+            VALUES (%s, %s) RETURNING id
         ''', (user_id, contact_id))
         conn.commit()
 
@@ -359,11 +345,10 @@ async def add_contact(request: Request):
             "message": "Контакт успешно добавлен"
         }
     except psycopg2.Error as e:
-        conn.rollback()
-        logger.error(f"Database error in add_contact: {str(e)}")
         return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
     finally:
         conn.close()
+
 @app.post("/remove-contact")
 async def remove_contact(request: Request):
     data = await request.json()
@@ -416,173 +401,116 @@ async def logout():
     response.delete_cookie("username")
     return response
 
-
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    # Проверяем существование пользователя в БД перед подключением
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM users WHERE id = %s', (int(user_id),))
-        if not cursor.fetchone():
-            logger.error(f"WebSocket connection attempt for non-existent user {user_id}")
-            await websocket.close(code=1008, reason="User not found")
-            return
-    except Exception as e:
-        logger.error(f"Database error during WebSocket auth: {str(e)}")
-        await websocket.close(code=1011, reason="Internal server error")
-        return
-    finally:
-        conn.close()
-
-    # Подключаем пользователя
     await manager.connect(websocket, user_id)
-    logger.info(f"User {user_id} connected. Active connections: {len(manager.active_connections)}")
-
     try:
         while True:
-            try:
-                data = await websocket.receive_json()
-                logger.debug(f"Received from {user_id}: {data}")
+            data = await websocket.receive_json()
+            logger.info(f"Received from {user_id}: {data}")
 
-                if data["type"] == "message":
-                    receiver_id = data["to"]
-                    message_text = data["message"]
+            if data["type"] == "message":
+                receiver_id = data["to"]
+                message_text = data["message"]
 
-                    # Сохраняем сообщение в БД
-                    save_message(int(user_id), int(receiver_id), message_text)
+                save_message(int(user_id), int(receiver_id), message_text)
 
-                    # Проверяем взаимность контакта
-                    conn = get_db_connection()
-                    is_mutual = False
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            SELECT 1 FROM contacts 
-                            WHERE user_id = %s AND contact_id = %s
-                        ''', (receiver_id, user_id))
-                        is_mutual = cursor.fetchone() is not None
-                    finally:
-                        conn.close()
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT 1 FROM contacts 
+                        WHERE user_id = %s AND contact_id = %s
+                    ''', (receiver_id, user_id))
+                    is_mutual = cursor.fetchone() is not None
+                finally:
+                    conn.close()
 
-                    # Отправляем сообщение получателю
-                    sent = await manager.send_json(receiver_id, {
-                        "type": "message",
-                        "from": user_id,
-                        "message": message_text,
-                        "timestamp": str(datetime.now()),
-                        "is_mutual": is_mutual
-                    })
-
-                    if not sent and not is_mutual:
-                        await manager.send_json(receiver_id, {
-                            "type": "notification",
-                            "from": user_id,
-                            "message": f"New message from #{get_username(user_id)}: {message_text}",
-                            "timestamp": str(datetime.now())
-                        })
-
-                elif data["type"] == "call_request":
-                    call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
-                    manager.pending_calls[call_id] = {
-                        "from": user_id,
-                        "to": data["to"],
-                        "status": "waiting"
-                    }
-                    await manager.send_json(data["to"], {
-                        "type": "call_incoming",
-                        "from": user_id,
-                        "call_id": call_id,
-                        "is_audio_only": True
-                    })
-                    await websocket.send_json({
-                        "type": "call_waiting",
-                        "call_id": call_id,
-                        "to": data["to"]
-                    })
-
-                elif data["type"] == "call_accept":
-                    call_id = data["call_id"]
-                    if call_id in manager.pending_calls:
-                        await manager.send_json(manager.pending_calls[call_id]["from"], {
-                            "type": "call_accepted",
-                            "call_id": call_id,
-                            "by": user_id
-                        })
-                        del manager.pending_calls[call_id]
-
-                elif data["type"] == "call_reject":
-                    call_id = data["call_id"]
-                    if call_id in manager.pending_calls:
-                        await manager.send_json(manager.pending_calls[call_id]["from"], {
-                            "type": "call_rejected",
-                            "call_id": call_id,
-                            "by": user_id
-                        })
-                        del manager.pending_calls[call_id]
-
-                elif data["type"] == "webrtc_offer":
-                    await manager.send_json(data["to"], {
-                        "type": "webrtc_offer",
-                        "from": user_id,
-                        "call_id": data["call_id"],
-                        "offer": data["offer"],
-                        "is_audio_only": True
-                    })
-
-                elif data["type"] == "webrtc_answer":
-                    await manager.send_json(data["to"], {
-                        "type": "webrtc_answer",
-                        "from": user_id,
-                        "call_id": data["call_id"],
-                        "answer": data["answer"]
-                    })
-
-                elif data["type"] == "ice_candidate":
-                    await manager.send_json(data["to"], {
-                        "type": "ice_candidate",
-                        "from": user_id,
-                        "call_id": data["call_id"],
-                        "candidate": data["candidate"]
-                    })
-
-            except KeyError as e:
-                logger.error(f"Invalid message format from {user_id}: {str(e)}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Invalid message format: missing {str(e)}"
-                })
-            except ValueError as e:
-                logger.error(f"Invalid JSON from {user_id}: {str(e)}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON format"
+                await manager.send_json(receiver_id, {
+                    "type": "message",
+                    "from": user_id,
+                    "message": message_text,
+                    "timestamp": str(datetime.now()),
+                    "is_mutual": is_mutual
                 })
 
-    except WebSocketDisconnect as e:
-        logger.info(f"User {user_id} disconnected. Code: {e.code}, reason: {e.reason}")
-        manager.disconnect(user_id)
+                if not is_mutual:
+                    await manager.send_json(receiver_id, {
+                        "type": "notification",
+                        "from": user_id,
+                        "message": f"New message from #{get_username(user_id)}: {message_text}",
+                        "timestamp": str(datetime.now())
+                    })
 
-        # Отменяем все ожидающие звонки от этого пользователя
-        for call_id, call in list(manager.pending_calls.items()):
-            if call["from"] == user_id:
-                await manager.send_json(call["to"], {
-                    "type": "call_rejected",
+            elif data["type"] == "call_request":
+                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
+                manager.pending_calls[call_id] = {
+                    "from": user_id,
+                    "to": data["to"],
+                    "status": "waiting"
+                }
+                await manager.send_json(data["to"], {
+                    "type": "call_incoming",
+                    "from": user_id,
                     "call_id": call_id,
-                    "by": user_id,
-                    "reason": "User disconnected"
+                    "is_audio_only": True
                 })
-                del manager.pending_calls[call_id]
+                await websocket.send_json({
+                    "type": "call_waiting",
+                    "call_id": call_id,
+                    "to": data["to"]
+                })
 
-    except Exception as e:
-        logger.error(f"Unexpected error for {user_id}: {str(e)}")
+            elif data["type"] == "call_accept":
+                call_id = data["call_id"]
+                if call_id in manager.pending_calls:
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                        "type": "call_accepted",
+                        "call_id": call_id,
+                        "by": user_id
+                    })
+                    del manager.pending_calls[call_id]
+
+            elif data["type"] == "call_reject":
+                call_id = data["call_id"]
+                if call_id in manager.pending_calls:
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                        "type": "call_rejected",
+                        "call_id": call_id,
+                        "by": user_id
+                    })
+                    del manager.pending_calls[call_id]
+
+            elif data["type"] == "webrtc_offer":
+                await manager.send_json(data["to"], {
+                    "type": "webrtc_offer",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "offer": data["offer"],
+                    "is_audio_only": True
+                })
+
+            elif data["type"] == "webrtc_answer":
+                await manager.send_json(data["to"], {
+                    "type": "webrtc_answer",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "answer": data["answer"]
+                })
+
+            elif data["type"] == "ice_candidate":
+                await manager.send_json(data["to"], {
+                    "type": "ice_candidate",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "candidate": data["candidate"]
+                })
+
+    except WebSocketDisconnect:
         manager.disconnect(user_id)
-        try:
-            await websocket.close(code=1011, reason="Internal server error")
-        except:
-            pass
-    finally:
-        logger.info(f"Connection closed for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error with {user_id}: {str(e)}")
+        manager.disconnect(user_id)
 
 if __name__ == "__main__":
     import uvicorn
