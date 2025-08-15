@@ -597,6 +597,15 @@
         // Генерируем уникальный ID звонка
         const callId = `${userId}_${currentContact}_${Date.now()}`;
 
+        // Показываем уведомление об ожидании
+        document.getElementById('waiting-notification').style.display = 'block';
+
+        // Таймаут для автоматического закрытия
+        const timeout = setTimeout(() => {
+            document.getElementById('waiting-notification').style.display = 'none';
+            alert("Пользователь не ответил на звонок");
+        }, 30000);
+
         ws.send(JSON.stringify({
             type: "call_initiate",
             to: currentContact,
@@ -604,9 +613,89 @@
             is_audio_only: true
         }));
 
+        // Сохраняем timeout для отмены
+        document.getElementById('waiting-notification').dataset.timeout = timeout;
+    }
+
+    function showIncomingCall(from, callId) {
+        const notification = document.createElement('div');
+        notification.className = 'call-notification';
+        notification.innerHTML = `
+            <h3>Входящий аудио звонок от #${from}</h3>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                <button onclick="acceptCall('${callId}')" style="background: #4CAF50;">Принять</button>
+                <button onclick="rejectCall('${callId}')" style="background: #f44336;">Отклонить</button>
+            </div>
+        `;
+        document.body.appendChild(notification);
+    }
+
+    function acceptCall(callId) {
+        // Удаляем уведомление
+        const notification = document.querySelector('.call-notification');
+        if (notification) notification.remove();
+
         // Открываем страницу звонка
         window.location.href = `/call/${callId}`;
     }
+
+    function rejectCall(callId) {
+        const notification = document.querySelector('.call-notification');
+        if (notification) notification.remove();
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: "call_reject",
+                from: userId,
+                to: currentContact,
+                call_id: callId
+            }));
+        }
+    }
+
+    function cancelCall() {
+        const waitingNotification = document.getElementById('waiting-notification');
+        if (waitingNotification.style.display === 'block') {
+            const timeout = waitingNotification.dataset.timeout;
+            if (timeout) clearTimeout(timeout);
+
+            waitingNotification.style.display = 'none';
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "call_reject",
+                    from: userId,
+                    to: currentContact,
+                    call_id: `${userId}_${currentContact}_${Date.now()}`
+                }));
+            }
+        }
+    }
+
+    // Обработчик сообщений WebSocket
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("WebSocket message:", data);
+
+        if (data.type === "message") {
+            // ... обработка сообщений ...
+        }
+        else if (data.type === "call_incoming") {
+            showIncomingCall(data.from, data.call_id);
+        }
+        else if (data.type === "call_accepted") {
+            document.getElementById('waiting-notification').style.display = 'none';
+            const timeout = document.getElementById('waiting-notification').dataset.timeout;
+            if (timeout) clearTimeout(timeout);
+            window.location.href = `/call/${data.call_id}`;
+        }
+        else if (data.type === "call_rejected") {
+            document.getElementById('waiting-notification').style.display = 'none';
+            const timeout = document.getElementById('waiting-notification').dataset.timeout;
+            if (timeout) clearTimeout(timeout);
+            alert("Пользователь отклонил ваш звонок");
+        }
+    };
 
     function showIncomingCall(from, callId) {
         const notification = document.createElement('div');
