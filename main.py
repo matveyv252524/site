@@ -19,17 +19,32 @@ templates = Jinja2Templates(directory="templates")
 # Подключение к PostgreSQL
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+
 def get_db_connection():
+    # Вариант 1: Использование DATABASE_URL из переменных окружения
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+
+    if DATABASE_URL:
+        # Автоматическая замена postgres:// на postgresql://
+        if DATABASE_URL.startswith("postgres://"):
+            DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+        try:
+            return psycopg2.connect(DATABASE_URL, sslmode='require')
+        except Exception as e:
+            logger.error(f"Database connection error: {str(e)}")
+            raise
+
+    # Вариант 2: Явное указание параметров (если нет DATABASE_URL)
     try:
-        conn = psycopg2.connect(
-            host="your-hostname-from-render",
-            database="your-database-name",
-            user="your-username",
-            password="your-password-from-render",
+        return psycopg2.connect(
+            host="dpg-d2fi9r3e5dus73apkggg-a.oregon-postgres.render.com",  # Ваш реальный hostname
+            database="aaa_30ug",
+            user="aaa_30ug_user",
+            password="roIwRVLkjaTxCEyReYZmdMZBb5z8y0v3",
             port=5432,
             sslmode='require'
         )
-        return conn
     except Exception as e:
         logger.error(f"Database connection failed: {str(e)}")
         raise
