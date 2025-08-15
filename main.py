@@ -8,7 +8,6 @@ import logging
 import sqlite3
 import hashlib
 from typing import Optional, Dict
-from user_agents import parse
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -46,12 +45,9 @@ manager = ConnectionManager()
 
 
 def get_client_identifier(request: Request):
-    """Генерирует уникальный идентификатор устройства"""
-    client_ip = request.client.host
-    user_agent = request.headers.get("user-agent", "")
-    ua = parse(user_agent)
-    device_info = f"{ua.os.family}-{ua.device.family}"
-    return hashlib.sha256(f"{client_ip}-{device_info}".encode()).hexdigest()
+    """Упрощенная идентификация устройства по IP"""
+    client_ip = request.client.host or "127.0.0.1"  # fallback для локального тестирования
+    return hashlib.sha256(client_ip.encode()).hexdigest()
 
 
 def check_device_limit(identifier: str):
