@@ -7,7 +7,6 @@ import uuid
 import logging
 import hashlib
 import psycopg2
-from urllib.parse import urlparse
 from typing import Optional, Dict, List
 
 # Настройка логирования
@@ -20,16 +19,22 @@ templates = Jinja2Templates(directory="templates")
 # Подключение к PostgreSQL
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+
 def get_db_connection():
-    result = urlparse(DATABASE_URL)
-    conn = psycopg2.connect(
-        dbname=result.path[1:],
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=result.port
-    )
-    return conn
+    # Если используете переменную окружения DATABASE_URL напрямую
+    import os
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+
+    # Замените postgres:// на postgresql:// (для совместимости с SQLAlchemy)
+    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        return conn
+    except Exception as e:
+        logger.error(f"Database connection error: {str(e)}")
+        raise
 
 class ConnectionManager:
     def __init__(self):
