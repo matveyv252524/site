@@ -22,10 +22,10 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 def get_db_connection():
     try:
         conn = psycopg2.connect(
-            host="your-hostname-from-render",
-            database="your-database-name",
-            user="your-username",
-            password="your-password-from-render",
+            host="dpg-d2fi9r3e5dus73apkggg-a.oregon-postgres.render.com",  # Ваш реальный hostname
+            database="aaa_30ug",
+            user="aaa_30ug_user",
+            password="roIwRVLkjaTxCEyReYZmdMZBb5z8y0v3",
             port=5432,
             sslmode='require'
         )
