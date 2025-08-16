@@ -17,14 +17,14 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 
-# Подключение к PostgreSQL
+# Подключение к PostgreSQL с новыми параметрами
 def get_db_connection():
     try:
         conn = psycopg2.connect(
-            host="dpg-d2fi9r3e5dus73apkggg-a.oregon-postgres.render.com",
-            database="aaa_30ug",
-            user="aaa_30ug_user",
-            password="roIwRVLkjaTxCEyReYZmdMZBb5z8y0v3",
+            host="dpg-d2gdp2odl3ps73f7jev0-a",
+            database="database12345",
+            user="admin",
+            password="bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
             port=5432,
             sslmode='require'
         )
@@ -78,11 +78,11 @@ manager = ConnectionManager()
 
 
 def init_db():
-    conn = None
+    conn = get_db_connection()
     try:
-        conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Обновленная команда создания таблицы users
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -94,6 +94,7 @@ def init_db():
             )
         ''')
 
+        # Остальные таблицы остаются без изменений
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
@@ -123,11 +124,7 @@ def init_db():
         logger.error(f"Error initializing database: {str(e)}")
         raise
     finally:
-        if conn:
-            conn.close()
-
-
-init_db()
+        conn.close()
 
 
 def hash_password(password: str) -> str:
@@ -667,5 +664,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # Инициализация базы данных при запуске приложения
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
 
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
