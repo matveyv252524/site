@@ -1,11 +1,168 @@
-{% extends "base.html" %}
-
-{% block content %}
-    <div style="text-align: center; margin-top: 50px;">
-        <h2>Добро пожаловать в FastAPI Мессенджер</h2>
-        <div style="margin-top: 30px;">
-            <a href="/login" class="btn" style="margin-right: 10px;">Вход</a>
-            <a href="/register" class="btn">Регистрация</a>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FastAPI Мессенджер</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f5f8fa;
+            margin: 0;
+            padding: 0;
+            color: #14171a;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: #1da1f2;
+            color: white;
+            padding: 15px 0;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .header-content {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            background: white;
+            color: #1da1f2;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #e8f5fe;
+        }
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .hero h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+        .hero p {
+            font-size: 18px;
+            color: #657786;
+            max-width: 700px;
+            margin: 0 auto 30px;
+        }
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        .cta-btn {
+            padding: 12px 24px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .primary {
+            background: #1da1f2;
+            color: white;
+        }
+        .primary:hover {
+            background: #1991db;
+        }
+        .secondary {
+            background: white;
+            color: #1da1f2;
+            border: 1px solid #1da1f2;
+        }
+        .secondary:hover {
+            background: #e8f5fe;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            padding: 40px 20px;
+        }
+        .feature-card {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .feature-icon {
+            font-size: 40px;
+            color: #1da1f2;
+            margin-bottom: 15px;
+        }
+        .feature-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #657786;
+            font-size: 14px;
+            border-top: 1px solid #e6ecf0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">FastAPI Messenger</div>
+            <div class="auth-buttons">
+                <a href="/login" class="btn">Вход</a>
+                <a href="/register" class="btn">Регистрация</a>
+            </div>
         </div>
-    </div>
-{% endblock %}
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Современный мессенджер для общения</h1>
+            <p>Быстрые сообщения, аудиозвонки и удобный интерфейс. Общайтесь с друзьями и коллегами без ограничений.</p>
+            <div class="cta-buttons">
+                <a href="/register" class="cta-btn primary">Начать бесплатно</a>
+                <a href="/login" class="cta-btn secondary">Уже есть аккаунт</a>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h3 class="feature-title">Мгновенные сообщения</h3>
+                <p>Отправляйте текстовые сообщения в реальном времени вашим контактам.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📞</div>
+                <h3 class="feature-title">Аудиозвонки</h3>
+                <p>Высококачественные аудиозвонки с друзьями и коллегами.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3 class="feature-title">Безопасность</h3>
+                <p>Защищенные соединения и шифрование данных для вашей конфиденциальности.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>© 2023 FastAPI Messenger. Все права защищены.</p>
+    </footer>
+</body>
+</html>
