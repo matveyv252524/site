@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
@@ -16,13 +16,12 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Подключение к PostgreSQL
-DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# Подключение к PostgreSQL
 def get_db_connection():
     try:
         conn = psycopg2.connect(
-            host="dpg-d2fi9r3e5dus73apkggg-a.oregon-postgres.render.com",  # Ваш реальный hostname
+            host="dpg-d2fi9r3e5dus73apkggg-a.oregon-postgres.render.com",
             database="aaa_30ug",
             user="aaa_30ug_user",
             password="roIwRVLkjaTxCEyReYZmdMZBb5z8y0v3",
@@ -32,7 +31,8 @@ def get_db_connection():
         return conn
     except Exception as e:
         logger.error(f"Database connection failed: {str(e)}")
-        raise
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
 
 class ConnectionManager:
     def __init__(self):
@@ -45,6 +45,7 @@ class ConnectionManager:
         self.active_connections[user_id] = websocket
         logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
 
+        # Отправка ожидающих уведомлений
         if user_id in self.user_notifications:
             for notification in self.user_notifications[user_id]:
                 await self.send_json(user_id, notification)
@@ -60,6 +61,7 @@ class ConnectionManager:
                 del self.active_connections[receiver_id]
                 return False
         else:
+            # Сохраняем уведомление для оффлайн пользователей
             if receiver_id not in self.user_notifications:
                 self.user_notifications[receiver_id] = []
             self.user_notifications[receiver_id].append(message)
@@ -71,12 +73,18 @@ class ConnectionManager:
             del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected")
 
+
 manager = ConnectionManager()
 
+
+# Инициализация базы данных
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Создание таблицы пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -85,6 +93,8 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # Создание таблицы контактов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
@@ -95,6 +105,8 @@ def init_db():
                 UNIQUE(user_id, contact_id)
             )
         ''')
+
+        # Создание таблицы сообщений
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -107,14 +119,23 @@ def init_db():
                 FOREIGN KEY(receiver_id) REFERENCES users(id)
             )
         ''')
-        conn.commit()
-    finally:
-        conn.close()
 
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+
+# Вызов инициализации базы данных при старте
 init_db()
+
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
     conn = get_db_connection()
@@ -126,8 +147,12 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         if user and user[2] == hash_password(password):
             return {"id": user[0], "username": user[1]}
         return None
+    except Exception as e:
+        logger.error(f"Error authenticating user: {str(e)}")
+        return None
     finally:
         conn.close()
+
 
 def register_user(username: str, password: str) -> Optional[dict]:
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
@@ -147,8 +172,12 @@ def register_user(username: str, password: str) -> Optional[dict]:
         return {"id": user_id, "username": username}
     except psycopg2.IntegrityError:
         return None
+    except Exception as e:
+        logger.error(f"Error registering user: {str(e)}")
+        return None
     finally:
         conn.close()
+
 
 def get_user_contacts(user_id: int):
     conn = get_db_connection()
@@ -161,8 +190,12 @@ def get_user_contacts(user_id: int):
             WHERE c.user_id = %s
         ''', (user_id,))
         return [{"id": row[0], "username": row[1]} for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting contacts: {str(e)}")
+        return []
     finally:
         conn.close()
+
 
 def get_message_history(user_id: int, contact_id: int):
     conn = get_db_connection()
@@ -177,8 +210,12 @@ def get_message_history(user_id: int, contact_id: int):
             ORDER BY m.timestamp
         ''', (user_id, contact_id, contact_id, user_id))
         return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Error getting messages: {str(e)}")
+        return []
     finally:
         conn.close()
+
 
 def save_message(sender_id: int, receiver_id: int, message: str):
     conn = get_db_connection()
@@ -189,8 +226,11 @@ def save_message(sender_id: int, receiver_id: int, message: str):
             VALUES (%s, %s, %s)
         ''', (sender_id, receiver_id, message))
         conn.commit()
+    except Exception as e:
+        logger.error(f"Error saving message: {str(e)}")
     finally:
         conn.close()
+
 
 def get_username(user_id: str) -> str:
     conn = get_db_connection()
@@ -199,66 +239,78 @@ def get_username(user_id: str) -> str:
         cursor.execute('SELECT username FROM users WHERE id = %s', (int(user_id),))
         result = cursor.fetchone()
         return result[0] if result else "unknown"
+    except Exception as e:
+        logger.error(f"Error getting username: {str(e)}")
+        return "unknown"
     finally:
         conn.close()
+
 
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     user = authenticate_user(username, password)
     if not user:
         return templates.TemplateResponse("login.html",
-                                        {"request": request, "error": "Invalid username or password"})
+                                          {"request": request, "error": "Invalid username or password"})
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
-    response.set_cookie(key="user_id", value=str(user['id']))
-    response.set_cookie(key="username", value=user['username'])
+    response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
+    response.set_cookie(key="username", value=user['username'], httponly=True)
     return response
+
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
+
 @app.post("/register")
 async def register(request: Request,
-                 username: str = Form(...),
-                 password: str = Form(...),
-                 confirm_password: str = Form(...)):
+                   username: str = Form(...),
+                   password: str = Form(...),
+                   confirm_password: str = Form(...)):
     if password != confirm_password:
         return templates.TemplateResponse("register.html",
-                                        {"request": request, "error": "Passwords don't match"})
+                                          {"request": request, "error": "Passwords don't match"})
 
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return templates.TemplateResponse("register.html",
-                                        {"request": request,
-                                         "error": "Username must start with # and be 6-16 characters long"})
+                                          {"request": request,
+                                           "error": "Username must start with # and be 6-16 characters long"})
 
     user = register_user(username, password)
     if not user:
         return templates.TemplateResponse("register.html",
-                                        {"request": request, "error": "Username already taken"})
+                                          {"request": request, "error": "Username already taken"})
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
-    response.set_cookie(key="user_id", value=str(user['id']))
-    response.set_cookie(key="username", value=user['username'])
+    response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
+    response.set_cookie(key="username", value=user['username'], httponly=True)
     return response
+
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
     # Проверка аутентификации
-    if not (username := request.cookies.get("username")):
+    if not (username := request.cookies.get("username")) or not request.cookies.get("user_id"):
         return RedirectResponse(url="/login")
 
     # Валидация user_id
     try:
         user_id_int = int(user_id)
+        cookie_user_id = int(request.cookies.get("user_id"))
+        if user_id_int != cookie_user_id:
+            return RedirectResponse(url="/login")
     except ValueError:
         return RedirectResponse(url="/login")
 
@@ -269,14 +321,17 @@ async def chat(request: Request, user_id: str):
             cursor.execute('SELECT id FROM users WHERE id = %s', (user_id_int,))
             if not cursor.fetchone():
                 return RedirectResponse(url="/login")
+    except Exception as e:
+        logger.error(f"Error verifying user: {str(e)}")
+        return RedirectResponse(url="/login")
     finally:
         conn.close()
 
-    # Получение контактов с безопасной обработкой
+    # Получение контактов
     try:
-        contacts = get_user_contacts(user_id_int) or []  # Гарантированный список
+        contacts = get_user_contacts(user_id_int)
     except Exception as e:
-        logger.error(f"Error getting contacts for {user_id_int}: {str(e)}")
+        logger.error(f"Error getting contacts: {str(e)}")
         contacts = []
 
     return templates.TemplateResponse(
@@ -285,114 +340,116 @@ async def chat(request: Request, user_id: str):
             "request": request,
             "user_id": user_id,
             "username": username,
-            "contacts": contacts  # Гарантированно список
+            "contacts": contacts
         }
     )
 
+
 @app.post("/add-contact")
 async def add_contact(request: Request):
-    data = await request.json()
-    user_id = int(data.get("user_id"))
-    contact_username = data.get("contact_username").strip().lower()
-
-    if not user_id or not contact_username:
-        return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
-
-    if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
-        return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
-
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
+        data = await request.json()
+        user_id = int(data.get("user_id"))
+        contact_username = data.get("contact_username").strip().lower()
 
-        cursor.execute('SELECT username FROM users WHERE id = %s', (user_id,))
-        current_user = cursor.fetchone()
+        if not user_id or not contact_username:
+            return {"success": False, "message": "Необходимо указать ID пользователя и имя контакта"}
 
-        if not current_user:
-            return {"success": False, "message": "Текущий пользователь не найден"}
+        if not contact_username.startswith('#') or len(contact_username) < 6 or len(contact_username) > 16:
+            return {"success": False, "message": "Имя пользователя должно начинаться с # и содержать 6-16 символов"}
 
-        current_username = current_user[0].lower()
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
 
-        if contact_username == current_username:
-            return {"success": False, "message": "Вы не можете добавить самого себя"}
+            # Проверка текущего пользователя
+            cursor.execute('SELECT username FROM users WHERE id = %s', (user_id,))
+            current_user = cursor.fetchone()
 
-        cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = %s', (contact_username,))
-        contact = cursor.fetchone()
+            if not current_user:
+                return {"success": False, "message": "Текущий пользователь не найден"}
 
-        if not contact:
-            return {"success": False, "message": "Пользователь не найден"}
+            current_username = current_user[0].lower()
 
-        contact_id, contact_username = contact[0], contact[1]
+            if contact_username == current_username:
+                return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-        cursor.execute('''
-            SELECT id FROM contacts 
-            WHERE user_id = %s AND contact_id = %s
-        ''', (user_id, contact_id))
+            # Поиск контакта
+            cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = %s', (contact_username,))
+            contact = cursor.fetchone()
 
-        if cursor.fetchone():
-            return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
+            if not contact:
+                return {"success": False, "message": "Пользователь не найден"}
 
-        cursor.execute('''
-            INSERT INTO contacts (user_id, contact_id) 
-            VALUES (%s, %s) RETURNING id
-        ''', (user_id, contact_id))
-        conn.commit()
+            contact_id, contact_username = contact[0], contact[1]
 
-        return {
-            "success": True,
-            "contact_id": contact_id,
-            "contact_username": contact_username,
-            "message": "Контакт успешно добавлен"
-        }
-    except psycopg2.Error as e:
-        return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
-    finally:
-        conn.close()
+            # Проверка, есть ли уже контакт
+            cursor.execute('''
+                SELECT id FROM contacts 
+                WHERE user_id = %s AND contact_id = %s
+            ''', (user_id, contact_id))
+
+            if cursor.fetchone():
+                return {"success": False, "message": "Этот пользователь уже есть в ваших контактах"}
+
+            # Добавление контакта
+            cursor.execute('''
+                INSERT INTO contacts (user_id, contact_id) 
+                VALUES (%s, %s)
+            ''', (user_id, contact_id))
+            conn.commit()
+
+            return {
+                "success": True,
+                "contact_id": contact_id,
+                "contact_username": contact_username,
+                "message": "Контакт успешно добавлен"
+            }
+        except psycopg2.Error as e:
+            conn.rollback()
+            return {"success": False, "message": f"Ошибка базы данных: {str(e)}"}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"Error in add_contact: {str(e)}")
+        return {"success": False, "message": "Internal server error"}
+
 
 @app.post("/remove-contact")
 async def remove_contact(request: Request):
-    data = await request.json()
-    user_id = int(data.get("user_id"))
-    contact_id = int(data.get("contact_id"))
-
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            DELETE FROM contacts 
-            WHERE user_id = %s AND contact_id = %s
-        ''', (user_id, contact_id))
-        conn.commit()
-        return {"success": True, "message": "Contact removed successfully"}
-    finally:
-        conn.close()
+        data = await request.json()
+        user_id = int(data.get("user_id"))
+        contact_id = int(data.get("contact_id"))
+
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM contacts 
+                WHERE user_id = %s AND contact_id = %s
+            ''', (user_id, contact_id))
+            conn.commit()
+            return {"success": True, "message": "Contact removed successfully"}
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "message": f"Error removing contact: {str(e)}"}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"Error in remove_contact: {str(e)}")
+        return {"success": False, "message": "Internal server error"}
+
 
 @app.get("/get-messages")
 async def get_messages(user_id: int, contact_id: int):
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT m.sender_id, u.username as sender_username, m.message, m.timestamp 
-            FROM messages m
-            JOIN users u ON m.sender_id = u.id
-            WHERE (m.sender_id = %s AND m.receiver_id = %s) 
-               OR (m.sender_id = %s AND m.receiver_id = %s)
-            ORDER BY m.timestamp
-        ''', (user_id, contact_id, contact_id, user_id))
-
-        messages = []
-        for row in cursor.fetchall():
-            messages.append({
-                "sender_id": row[0],
-                "sender_username": row[1],
-                "message": row[2],
-                "timestamp": row[3]
-            })
-
+        messages = get_message_history(user_id, contact_id)
         return messages
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error getting messages: {str(e)}")
+        return []
+
 
 @app.get("/logout")
 async def logout():
@@ -400,6 +457,7 @@ async def logout():
     response.delete_cookie("user_id")
     response.delete_cookie("username")
     return response
+
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -413,8 +471,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 receiver_id = data["to"]
                 message_text = data["message"]
 
+                # Сохраняем сообщение в базе данных
                 save_message(int(user_id), int(receiver_id), message_text)
 
+                # Проверяем взаимность контакта
                 conn = get_db_connection()
                 try:
                     cursor = conn.cursor()
@@ -426,6 +486,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 finally:
                     conn.close()
 
+                # Отправляем сообщение получателю
                 await manager.send_json(receiver_id, {
                     "type": "message",
                     "from": user_id,
@@ -434,6 +495,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "is_mutual": is_mutual
                 })
 
+                # Если контакт не взаимный, отправляем уведомление
                 if not is_mutual:
                     await manager.send_json(receiver_id, {
                         "type": "notification",
@@ -508,10 +570,17 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+        logger.info(f"User {user_id} disconnected")
     except Exception as e:
         logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
+        try:
+            await websocket.close()
+        except:
+            pass
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
