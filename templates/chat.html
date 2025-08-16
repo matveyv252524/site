@@ -24,6 +24,9 @@
             background: #f44336;
             color: white;
         }
+        .connected #connection-status {
+            background: #4CAF50;
+        }
         .call-notification {
             position: fixed;
             top: 50%;
@@ -47,6 +50,25 @@
             padding: 10px 20px;
             border-radius: 20px;
         }
+        #contacts-list {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .contact-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .contact-item:hover {
+            background: #f5f5f5;
+        }
+        .active-contact {
+            background: #e3f2fd;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -55,9 +77,20 @@
     <div id="init-screen">
         <h2>Audio Messenger</h2>
         <p>Your ID: <strong>{{ user_id }}</strong></p>
-        <div>
-            <input type="text" id="contact-id" placeholder="Enter friend's ID">
-            <button onclick="startChat()">Start Chat</button>
+        <p>Your username: <strong>{{ username }}</strong></p>
+
+        <div style="margin: 20px 0;">
+            <input type="text" id="contact-username" placeholder="Enter friend's username (e.g. #username)">
+            <button onclick="addContact()">Add Contact</button>
+        </div>
+
+        <div id="contacts-list">
+            <h3>Your Contacts</h3>
+            {% for contact in contacts %}
+                <div class="contact-item" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}')">
+                    {{ contact.username }}
+                </div>
+            {% endfor %}
         </div>
     </div>
 
@@ -68,6 +101,7 @@
             <input type="text" id="message-input" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
             <button onclick="startAudioCall()">Audio Call</button>
+            <button onclick="backToContacts()">Back to Contacts</button>
         </div>
     </div>
 
@@ -78,15 +112,26 @@
 
     <script>
         const userId = "{{ user_id }}";
+        const username = "{{ username }}";
         let ws;
         let currentContact = null;
+        let currentContactName = null;
         let currentCallId = null;
         let callTimeout;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
 
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
             statusElement.textContent = status;
-            statusElement.style.background = status === "Connected" ? "#4CAF50" : "#f44336";
+
+            if (status === "Connected") {
+                document.body.classList.add('connected');
+                statusElement.style.background = "#4CAF50";
+            } else {
+                document.body.classList.remove('connected');
+                statusElement.style.background = "#f44336";
+            }
         }
 
         function connectWebSocket() {
@@ -95,20 +140,26 @@
 
             ws.onopen = () => {
                 updateStatus("Connected");
+                reconnectAttempts = 0;
                 console.log("WebSocket connected");
+
                 if (currentContact) {
-                    ws.send(JSON.stringify({
-                        type: "reconnect",
-                        user_id: userId,
-                        contact_id: currentContact
-                    }));
+                    loadMessages(currentContact);
                 }
             };
 
             ws.onclose = () => {
                 updateStatus("Disconnected");
-                console.log("WebSocket disconnected, reconnecting...");
-                setTimeout(connectWebSocket, 3000);
+                console.log("WebSocket disconnected");
+
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
+                    console.log(`Reconnecting in ${delay}ms...`);
+                    setTimeout(connectWebSocket, delay);
+                    reconnectAttempts++;
+                } else {
+                    console.log("Max reconnection attempts reached");
+                }
             };
 
             ws.onerror = (error) => {
@@ -135,7 +186,81 @@
                 else if (data.type === "call_rejected") {
                     handleCallRejected(data.by);
                 }
+                else if (data.type === "notification") {
+                    alert(data.message);
+                }
             };
+        }
+
+        function addContact() {
+            const contactUsername = document.getElementById("contact-username").value.trim();
+            if (!contactUsername) {
+                alert("Please enter contact username");
+                return;
+            }
+
+            fetch('/add-contact', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    contact_username: contactUsername
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Contact ${data.contact_username} added successfully`);
+                    location.reload();
+                } else {
+                    alert(data.message || "Failed to add contact");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("Failed to add contact");
+            });
+        }
+
+        function selectContact(contactId, contactName) {
+            currentContact = contactId;
+            currentContactName = contactName;
+
+            document.getElementById("init-screen").style.display = "none";
+            document.getElementById("chat-container").style.display = "block";
+            document.getElementById("contact-name").textContent = contactName;
+
+            loadMessages(contactId);
+        }
+
+        function backToContacts() {
+            currentContact = null;
+            document.getElementById("chat-container").style.display = "none";
+            document.getElementById("init-screen").style.display = "block";
+            document.getElementById("messages").innerHTML = "";
+        }
+
+        function loadMessages(contactId) {
+            fetch(`/get-messages?user_id=${userId}&contact_id=${contactId}`)
+                .then(response => response.json())
+                .then(messages => {
+                    const messagesDiv = document.getElementById("messages");
+                    messagesDiv.innerHTML = "";
+
+                    messages.forEach(msg => {
+                        displayMessage(
+                            msg.sender_id,
+                            msg.message,
+                            msg.sender_id != userId,
+                            msg.timestamp
+                        );
+                    });
+                })
+                .catch(error => {
+                    console.error("Error loading messages:", error);
+                });
         }
 
         function showIncomingCall(from, callId, isAudioOnly) {
@@ -221,30 +346,7 @@
                 is_audio_only: true
             }));
 
-            alert(`Starting audio call with ${currentContact}...`);
-        }
-
-        function startChat() {
-            const contactId = document.getElementById("contact-id").value.trim();
-            if (!contactId) {
-                alert("Please enter contact ID");
-                return;
-            }
-
-            if (contactId === userId) {
-                alert("You can't chat with yourself!");
-                return;
-            }
-
-            currentContact = contactId;
-            document.getElementById("init-screen").style.display = "none";
-            document.getElementById("chat-container").style.display = "block";
-            document.getElementById("contact-name").textContent = contactId;
-            document.getElementById("messages").innerHTML = "";
-
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                connectWebSocket();
-            }
+            showWaitingNotification(`${userId}_${currentContact}_${Date.now()}`);
         }
 
         function sendMessage() {
@@ -294,6 +396,7 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
+
             document.getElementById("message-input").addEventListener("keypress", (e) => {
                 if (e.key === "Enter") sendMessage();
             });
