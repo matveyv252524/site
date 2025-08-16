@@ -2,11 +2,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTP
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
-import os
 import uuid
 import logging
 import hashlib
 import psycopg2
+import uvicorn
 from typing import Optional, Dict, List
 
 # Настройка логирования
@@ -661,15 +661,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         except:
             pass
 
-
 if __name__ == "__main__":
-    import uvicorn
-
-    # Инициализация базы данных
+    # Инициализация БД перед запуском
     try:
         init_db()
+        logger.info("✅ Таблицы успешно созданы!")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
-        exit(1)
+        logger.error(f"❌ Ошибка создания таблиц: {str(e)}")
+        exit(1)  # Остановить приложение, если БД не готова
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    # Запуск сервера
+    uvicorn.run(app, host="0.0.0.0", port=8000)
