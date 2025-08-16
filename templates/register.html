@@ -1,27 +1,120 @@
-{% extends "base.html" %}
-
-{% block content %}
-    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px;">
-        <h2 style="text-align: center; margin-bottom: 20px;">Регистрация</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Регистрация</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f8fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .register-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            color: #1da1f2;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e6ecf0;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #1991db;
+        }
+        .error {
+            color: #e0245e;
+            text-align: center;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .login-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #657786;
+            font-size: 14px;
+        }
+        a {
+            color: #1da1f2;
+            text-decoration: none;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #657786;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <h2>Создайте аккаунт</h2>
 
         {% if error %}
-        <div style="color: #f44336; margin-bottom: 15px; text-align: center;">{{ error }}</div>
+        <div class="error">{{ error }}</div>
         {% endif %}
 
-        <form method="post" action="/register" style="display: flex; flex-direction: column; gap: 15px;">
-            <input type="text" name="username" placeholder="Имя пользователя (например, #username)" required
-                   style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <input type="password" name="password" placeholder="Пароль" required
-                   style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <input type="password" name="confirm_password" placeholder="Подтвердите пароль" required
-                   style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <button type="submit" style="padding: 10px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Зарегистрироваться
-            </button>
+        <form method="post" action="/register">
+            <div class="form-group">
+                <label for="name">Ваше имя</label>
+                <input type="text" id="name" name="name" placeholder="Иван Иванов" required>
+            </div>
+
+            <div class="form-group">
+                <label for="username">Юзернейм (начинается с #)</label>
+                <input type="text" id="username" name="username" placeholder="#username" required>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Описание профиля (необязательно)</label>
+                <textarea id="description" name="description" placeholder="Расскажите о себе"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" name="password" placeholder="Не менее 6 символов" required>
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_password">Подтвердите пароль</label>
+                <input type="password" id="confirm_password" name="confirm_password" placeholder="Повторите пароль" required>
+            </div>
+
+            <button type="submit">Зарегистрироваться</button>
         </form>
 
-        <div style="text-align: center; margin-top: 20px;">
-            Уже есть аккаунт? <a href="/login" style="color: #2196f3;">Войдите</a>
+        <div class="login-link">
+            Уже есть аккаунт? <a href="/login">Войдите</a>
         </div>
     </div>
-{% endblock %}
+</body>
+</html>
