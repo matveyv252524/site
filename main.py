@@ -100,7 +100,7 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Создание таблиц
+        # Создание таблиц с правильным синтаксисом
         tables = [
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -118,6 +118,7 @@ def init_db():
                 user_id INTEGER NOT NULL REFERENCES users(id),
                 contact_id INTEGER NOT NULL REFERENCES users(id),
                 UNIQUE(user_id, contact_id)
+            )
             """,
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -134,6 +135,7 @@ def init_db():
         for table_ddl in tables:
             try:
                 cursor.execute(table_ddl)
+                logger.info(f"Successfully executed: {table_ddl.split()[5]}")  # Логируем имя таблицы
             except Exception as e:
                 logger.error(f"Error creating table: {str(e)}")
                 raise
