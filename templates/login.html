@@ -1,25 +1,101 @@
-{% extends "base.html" %}
-
-{% block content %}
-    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px;">
-        <h2 style="text-align: center; margin-bottom: 20px;">Вход</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Вход</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f8fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            color: #1da1f2;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e6ecf0;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #1991db;
+        }
+        .error {
+            color: #e0245e;
+            text-align: center;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #657786;
+            font-size: 14px;
+        }
+        a {
+            color: #1da1f2;
+            text-decoration: none;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #657786;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Вход в аккаунт</h2>
 
         {% if error %}
-        <div style="color: #f44336; margin-bottom: 15px; text-align: center;">{{ error }}</div>
+        <div class="error">{{ error }}</div>
         {% endif %}
 
-        <form method="post" action="/login" style="display: flex; flex-direction: column; gap: 15px;">
-            <input type="text" name="username" placeholder="Имя пользователя (например, #username)" required
-                   style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <input type="password" name="password" placeholder="Пароль" required
-                   style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-            <button type="submit" style="padding: 10px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Войти
-            </button>
+        <form method="post" action="/login">
+            <div class="form-group">
+                <label for="username">Юзернейм</label>
+                <input type="text" id="username" name="username" placeholder="#username" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" name="password" placeholder="Ваш пароль" required>
+            </div>
+
+            <button type="submit">Войти</button>
         </form>
 
-        <div style="text-align: center; margin-top: 20px;">
-            Нет аккаунта? <a href="/register" style="color: #2196f3;">Зарегистрируйтесь</a>
+        <div class="register-link">
+            Нет аккаунта? <a href="/register">Зарегистрируйтесь</a>
         </div>
     </div>
-{% endblock %}
+</body>
+</html>
