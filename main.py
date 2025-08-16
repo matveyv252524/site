@@ -77,24 +77,23 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# Инициализация базы данных
 def init_db():
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Создание таблицы пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
-        # Создание таблицы контактов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
@@ -106,7 +105,6 @@ def init_db():
             )
         ''')
 
-        # Создание таблицы сообщений
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -129,7 +127,6 @@ def init_db():
             conn.close()
 
 
-# Вызов инициализации базы данных при старте
 init_db()
 
 
@@ -141,11 +138,11 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, password FROM users WHERE username = %s', (username,))
+        cursor.execute('SELECT id, username, name, password FROM users WHERE username = %s', (username,))
         user = cursor.fetchone()
 
-        if user and user[2] == hash_password(password):
-            return {"id": user[0], "username": user[1]}
+        if user and user[3] == hash_password(password):
+            return {"id": user[0], "username": user[1], "name": user[2]}
         return None
     except Exception as e:
         logger.error(f"Error authenticating user: {str(e)}")
@@ -154,7 +151,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         conn.close()
 
 
-def register_user(username: str, password: str) -> Optional[dict]:
+def register_user(username: str, password: str, name: str, description: str = "") -> Optional[dict]:
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return None
 
@@ -164,16 +161,39 @@ def register_user(username: str, password: str) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id',
-            (username, hashed_password)
+            'INSERT INTO users (username, password, name, description) VALUES (%s, %s, %s, %s) RETURNING id',
+            (username, hashed_password, name, description)
         )
         user_id = cursor.fetchone()[0]
         conn.commit()
-        return {"id": user_id, "username": username}
+        return {"id": user_id, "username": username, "name": name}
     except psycopg2.IntegrityError:
         return None
     except Exception as e:
         logger.error(f"Error registering user: {str(e)}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_user_profile(user_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username, name, description 
+            FROM users WHERE id = %s
+        ''', (user_id,))
+        result = cursor.fetchone()
+        if result:
+            return {
+                "username": result[0],
+                "name": result[1],
+                "description": result[2]
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting user profile: {str(e)}")
         return None
     finally:
         conn.close()
@@ -184,12 +204,12 @@ def get_user_contacts(user_id: int):
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT u.id, u.username 
+            SELECT u.id, u.username, u.name 
             FROM contacts c
             JOIN users u ON c.contact_id = u.id
             WHERE c.user_id = %s
         ''', (user_id,))
-        return [{"id": row[0], "username": row[1]} for row in cursor.fetchall()]
+        return [{"id": row[0], "username": row[1], "name": row[2]} for row in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Error getting contacts: {str(e)}")
         return []
@@ -202,14 +222,25 @@ def get_message_history(user_id: int, contact_id: int):
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT m.sender_id, u.username as sender_username, m.message, m.timestamp 
+            SELECT m.sender_id, u.username, u.name, m.message, m.timestamp 
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE (m.sender_id = %s AND m.receiver_id = %s) 
                OR (m.sender_id = %s AND m.receiver_id = %s)
             ORDER BY m.timestamp
         ''', (user_id, contact_id, contact_id, user_id))
-        return cursor.fetchall()
+
+        messages = []
+        for row in cursor.fetchall():
+            messages.append({
+                "sender_id": row[0],
+                "sender_username": row[1],
+                "sender_name": row[2],
+                "message": row[3],
+                "timestamp": row[4]
+            })
+
+        return messages
     except Exception as e:
         logger.error(f"Error getting messages: {str(e)}")
         return []
@@ -266,6 +297,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
+    response.set_cookie(key="name", value=user['name'], httponly=True)
     return response
 
 
@@ -275,10 +307,14 @@ async def register_page(request: Request):
 
 
 @app.post("/register")
-async def register(request: Request,
-                   username: str = Form(...),
-                   password: str = Form(...),
-                   confirm_password: str = Form(...)):
+async def register(
+        request: Request,
+        username: str = Form(...),
+        password: str = Form(...),
+        confirm_password: str = Form(...),
+        name: str = Form(...),
+        description: str = Form("")
+):
     if password != confirm_password:
         return templates.TemplateResponse("register.html",
                                           {"request": request, "error": "Passwords don't match"})
@@ -288,7 +324,7 @@ async def register(request: Request,
                                           {"request": request,
                                            "error": "Username must start with # and be 6-16 characters long"})
 
-    user = register_user(username, password)
+    user = register_user(username, password, name, description)
     if not user:
         return templates.TemplateResponse("register.html",
                                           {"request": request, "error": "Username already taken"})
@@ -296,7 +332,53 @@ async def register(request: Request,
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
+    response.set_cookie(key="name", value=user['name'], httponly=True)
     return response
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    profile = get_user_profile(int(user_id))
+    if not profile:
+        return RedirectResponse(url="/login")
+
+    return templates.TemplateResponse("profile.html", {
+        "request": request,
+        "profile": profile
+    })
+
+
+@app.post("/update-profile")
+async def update_profile(
+        request: Request,
+        name: str = Form(...),
+        description: str = Form("")
+):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE users SET name = %s, description = %s
+            WHERE id = %s
+        ''', (name, description, user_id))
+        conn.commit()
+
+        response = RedirectResponse(url="/profile", status_code=303)
+        response.set_cookie(key="name", value=name, httponly=True)
+        return response
+    except Exception as e:
+        logger.error(f"Error updating profile: {str(e)}")
+        return RedirectResponse(url="/profile", status_code=303)
+    finally:
+        conn.close()
 
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
@@ -340,6 +422,7 @@ async def chat(request: Request, user_id: str):
             "request": request,
             "user_id": user_id,
             "username": username,
+            "name": request.cookies.get("name"),
             "contacts": contacts
         }
     )
@@ -375,13 +458,13 @@ async def add_contact(request: Request):
                 return {"success": False, "message": "Вы не можете добавить самого себя"}
 
             # Поиск контакта
-            cursor.execute('SELECT id, username FROM users WHERE LOWER(username) = %s', (contact_username,))
+            cursor.execute('SELECT id, username, name FROM users WHERE LOWER(username) = %s', (contact_username,))
             contact = cursor.fetchone()
 
             if not contact:
                 return {"success": False, "message": "Пользователь не найден"}
 
-            contact_id, contact_username = contact[0], contact[1]
+            contact_id, contact_username, contact_name = contact[0], contact[1], contact[2]
 
             # Проверка, есть ли уже контакт
             cursor.execute('''
@@ -403,6 +486,7 @@ async def add_contact(request: Request):
                 "success": True,
                 "contact_id": contact_id,
                 "contact_username": contact_username,
+                "contact_name": contact_name,
                 "message": "Контакт успешно добавлен"
             }
         except psycopg2.Error as e:
@@ -456,6 +540,7 @@ async def logout():
     response = RedirectResponse(url="/login")
     response.delete_cookie("user_id")
     response.delete_cookie("username")
+    response.delete_cookie("name")
     return response
 
 
