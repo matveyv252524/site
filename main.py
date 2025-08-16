@@ -21,7 +21,7 @@ templates = Jinja2Templates(directory="templates")
 def get_db_connection():
     try:
         conn = psycopg2.connect(
-            host="dpg-d2gdp2odl3ps73f7jev0-a",
+            host="dpg-d2gdp2odl3ps73f7jev0-a.oregon-postgres.render.com",  # Полный домен!
             database="database12345",
             user="admin",
             password="bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
@@ -78,12 +78,13 @@ manager = ConnectionManager()
 
 
 def init_db():
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Обновленная команда создания таблицы users
-        cursor.execute('''
+        # Проверяем существование таблицы users
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
@@ -92,10 +93,9 @@ def init_db():
                 description TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
-        # Остальные таблицы остаются без изменений
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -103,10 +103,9 @@ def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(contact_id) REFERENCES users(id),
                 UNIQUE(user_id, contact_id)
-            )
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 sender_id INTEGER NOT NULL,
@@ -117,15 +116,16 @@ def init_db():
                 FOREIGN KEY(sender_id) REFERENCES users(id),
                 FOREIGN KEY(receiver_id) REFERENCES users(id)
             )
-        ''')
+        """)
 
         conn.commit()
+        logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
         raise
     finally:
-        conn.close()
-
+        if conn is not None:
+            conn.close()
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -665,11 +665,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    # Инициализация базы данных при запуске приложения
+    # Инициализация базы данных
     try:
         init_db()
-        logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
+        exit(1)
 
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
