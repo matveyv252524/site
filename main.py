@@ -1,3 +1,5 @@
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -6,33 +8,37 @@ import uuid
 import logging
 import hashlib
 import psycopg2
-import uvicorn
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, AsyncGenerator
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+# ======================
+# НАСТРОЙКА ПРИЛОЖЕНИЯ
+# ======================
+
+# Конфигурация логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+# Конфигурация базы данных
+DB_CONFIG = {
+    "host": "dpg-d2gdp2odl3ps73f7jev0-a.oregon-postgres.render.com",
+    "database": "database12345",
+    "user": "admin",
+    "password": "bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
+    "port": "5432",
+    "sslmode": "require"
+}
 
 
-# Подключение к PostgreSQL с новыми параметрами
-def get_db_connection():
-    try:
-        conn = psycopg2.connect(
-            host="dpg-d2gdp2odl3ps73f7jev0-a.oregon-postgres.render.com",  # Полный домен!
-            database="database12345",
-            user="admin",
-            password="bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
-            port=5432,
-            sslmode='require'
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
-
+# ======================
+# КЛАССЫ И ФУНКЦИИ
+# ======================
 
 class ConnectionManager:
     def __init__(self):
@@ -45,13 +51,13 @@ class ConnectionManager:
         self.active_connections[user_id] = websocket
         logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
 
-        # Отправка ожидающих уведомлений
+        # Send pending notifications
         if user_id in self.user_notifications:
             for notification in self.user_notifications[user_id]:
                 await self.send_json(user_id, notification)
             self.user_notifications[user_id] = []
 
-    async def send_json(self, receiver_id: str, message: dict):
+    async def send_json(self, receiver_id: str, message: dict) -> bool:
         if receiver_id in self.active_connections:
             try:
                 await self.active_connections[receiver_id].send_json(message)
@@ -61,7 +67,6 @@ class ConnectionManager:
                 del self.active_connections[receiver_id]
                 return False
         else:
-            # Сохраняем уведомление для оффлайн пользователей
             if receiver_id not in self.user_notifications:
                 self.user_notifications[receiver_id] = []
             self.user_notifications[receiver_id].append(message)
@@ -77,14 +82,27 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def get_db_connection():
+    """Устанавливает соединение с PostgreSQL"""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        logger.info("Database connection established")
+        return conn
+    except Exception as e:
+        logger.error(f"Database connection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+
 def init_db():
+    """Инициализирует таблицы в базе данных"""
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Проверяем существование таблицы users
-        cursor.execute("""
+        # Создание таблиц
+        tables = [
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
@@ -93,49 +111,57 @@ def init_db():
                 description TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                contact_id INTEGER NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(contact_id) REFERENCES users(id),
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                contact_id INTEGER NOT NULL REFERENCES users(id),
                 UNIQUE(user_id, contact_id)
-        """)
-
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
-                sender_id INTEGER NOT NULL,
-                receiver_id INTEGER NOT NULL,
+                sender_id INTEGER NOT NULL REFERENCES users(id),
+                receiver_id INTEGER NOT NULL REFERENCES users(id),
                 message TEXT NOT NULL,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_read BOOLEAN DEFAULT FALSE,
-                FOREIGN KEY(sender_id) REFERENCES users(id),
-                FOREIGN KEY(receiver_id) REFERENCES users(id)
+                is_read BOOLEAN DEFAULT FALSE
             )
-        """)
+            """
+        ]
+
+        for table_ddl in tables:
+            try:
+                cursor.execute(table_ddl)
+            except Exception as e:
+                logger.error(f"Error creating table: {str(e)}")
+                raise
 
         conn.commit()
-        logger.info("Database tables created successfully")
+        logger.info("All tables initialized successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
+        logger.error(f"Database initialization failed: {str(e)}")
         raise
     finally:
         if conn is not None:
             conn.close()
 
+
 def hash_password(password: str) -> str:
+    """Хеширует пароль"""
     return hashlib.sha256(password.encode()).hexdigest()
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Аутентифицирует пользователя"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, name, password FROM users WHERE username = %s', (username,))
+        cursor.execute(
+            'SELECT id, username, name, password FROM users WHERE username = %s',
+            (username,)
+        )
         user = cursor.fetchone()
 
         if user and user[3] == hash_password(password):
@@ -149,6 +175,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
 
 def register_user(username: str, password: str, name: str, description: str = "") -> Optional[dict]:
+    """Регистрирует нового пользователя"""
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
         return None
 
@@ -158,7 +185,8 @@ def register_user(username: str, password: str, name: str, description: str = ""
     try:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO users (username, password, name, description) VALUES (%s, %s, %s, %s) RETURNING id',
+            'INSERT INTO users (username, password, name, description) '
+            'VALUES (%s, %s, %s, %s) RETURNING id',
             (username, hashed_password, name, description)
         )
         user_id = cursor.fetchone()[0]
@@ -173,7 +201,8 @@ def register_user(username: str, password: str, name: str, description: str = ""
         conn.close()
 
 
-def get_user_profile(user_id: int):
+def get_user_profile(user_id: int) -> Optional[dict]:
+    """Получает профиль пользователя"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -196,7 +225,8 @@ def get_user_profile(user_id: int):
         conn.close()
 
 
-def get_user_contacts(user_id: int):
+def get_user_contacts(user_id: int) -> List[dict]:
+    """Получает контакты пользователя"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -214,7 +244,8 @@ def get_user_contacts(user_id: int):
         conn.close()
 
 
-def get_message_history(user_id: int, contact_id: int):
+def get_message_history(user_id: int, contact_id: int) -> List[dict]:
+    """Получает историю сообщений"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -227,17 +258,13 @@ def get_message_history(user_id: int, contact_id: int):
             ORDER BY m.timestamp
         ''', (user_id, contact_id, contact_id, user_id))
 
-        messages = []
-        for row in cursor.fetchall():
-            messages.append({
-                "sender_id": row[0],
-                "sender_username": row[1],
-                "sender_name": row[2],
-                "message": row[3],
-                "timestamp": row[4]
-            })
-
-        return messages
+        return [{
+            "sender_id": row[0],
+            "sender_username": row[1],
+            "sender_name": row[2],
+            "message": row[3],
+            "timestamp": row[4]
+        } for row in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Error getting messages: {str(e)}")
         return []
@@ -246,6 +273,7 @@ def get_message_history(user_id: int, contact_id: int):
 
 
 def save_message(sender_id: int, receiver_id: int, message: str):
+    """Сохраняет сообщение в базе данных"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -261,6 +289,7 @@ def save_message(sender_id: int, receiver_id: int, message: str):
 
 
 def get_username(user_id: str) -> str:
+    """Получает имя пользователя по ID"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -273,6 +302,41 @@ def get_username(user_id: str) -> str:
     finally:
         conn.close()
 
+
+# ======================
+# LIFESPAN HANDLER
+# ======================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Обработчик жизненного цикла приложения"""
+    # Инициализация при запуске
+    logger.info("Starting application initialization...")
+    try:
+        init_db()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.critical(f"❌ Critical database initialization error: {str(e)}")
+        raise
+
+    yield  # Приложение работает
+
+    # Очистка при завершении
+    logger.info("Shutting down application")
+    # Здесь можно добавить код для очистки ресурсов
+
+
+# ======================
+# ИНИЦИАЛИЗАЦИЯ FASTAPI
+# ======================
+
+app = FastAPI(lifespan=lifespan)
+templates = Jinja2Templates(directory="templates")
+
+
+# ======================
+# МАРШРУТЫ ПРИЛОЖЕНИЯ
+# ======================
 
 @app.get("/")
 async def home(request: Request):
@@ -288,8 +352,10 @@ async def login_page(request: Request):
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     user = authenticate_user(username, password)
     if not user:
-        return templates.TemplateResponse("login.html",
-                                          {"request": request, "error": "Invalid username or password"})
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Неверное имя пользователя или пароль"}
+        )
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
@@ -313,18 +379,26 @@ async def register(
         description: str = Form("")
 ):
     if password != confirm_password:
-        return templates.TemplateResponse("register.html",
-                                          {"request": request, "error": "Passwords don't match"})
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Пароли не совпадают"}
+        )
 
     if not username.startswith('#') or len(username) < 6 or len(username) > 16:
-        return templates.TemplateResponse("register.html",
-                                          {"request": request,
-                                           "error": "Username must start with # and be 6-16 characters long"})
+        return templates.TemplateResponse(
+            "register.html",
+            {
+                "request": request,
+                "error": "Имя пользователя должно начинаться с # и содержать 6-16 символов"
+            }
+        )
 
     user = register_user(username, password, name, description)
     if not user:
-        return templates.TemplateResponse("register.html",
-                                          {"request": request, "error": "Username already taken"})
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Имя пользователя уже занято"}
+        )
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
@@ -343,10 +417,10 @@ async def profile_page(request: Request):
     if not profile:
         return RedirectResponse(url="/login")
 
-    return templates.TemplateResponse("profile.html", {
-        "request": request,
-        "profile": profile
-    })
+    return templates.TemplateResponse(
+        "profile.html",
+        {"request": request, "profile": profile}
+    )
 
 
 @app.post("/update-profile")
@@ -661,14 +735,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         except:
             pass
 
-if __name__ == "__main__":
-    # Инициализация БД перед запуском
-    try:
-        init_db()
-        logger.info("✅ Таблицы успешно созданы!")
-    except Exception as e:
-        logger.error(f"❌ Ошибка создания таблиц: {str(e)}")
-        exit(1)  # Остановить приложение, если БД не готова
 
-    # Запуск сервера
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# ======================
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ======================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
