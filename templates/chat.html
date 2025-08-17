@@ -395,6 +395,20 @@
         .connected #connection-status {
             background: #17bf63;
         }
+        
+        /* Уведомление о новом сообщении */
+        .unread-badge {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
@@ -422,14 +436,15 @@
         </div>
 
         <!-- Список контактов -->
-        <div class="contacts-list">
+        <div class="contacts-list" id="contactsList">
             {% for contact in contacts %}
-            <div class="contact-item" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
+            <div class="contact-item" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
                 <div class="contact-avatar">{{ contact.name[0]|upper }}</div>
                 <div class="contact-info">
                     <div class="contact-name">{{ contact.name }}</div>
                     <div class="contact-username">{{ contact.username }}</div>
                 </div>
+                <div class="unread-badge" id="unread-{{ contact.id }}" style="display: none;"></div>
             </div>
             {% endfor %}
         </div>
@@ -483,6 +498,7 @@
         let callTimeout;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
+        const unreadMessages = {};
 
         function updateStatus(status) {
             const statusElement = document.getElementById("connection-status");
@@ -533,7 +549,16 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message") {
-                    displayMessage(data.from, data.message, data.from !== userId, data.timestamp);
+                    // Проверяем, активен ли чат с отправителем
+                    const isActiveChat = currentContact === data.from;
+                    
+                    if (isActiveChat) {
+                        // Если чат активен, сразу отображаем сообщение
+                        displayMessage(data.from, data.message, true, data.timestamp);
+                    } else {
+                        // Если чат не активен, добавляем уведомление
+                        incrementUnreadCount(data.from);
+                    }
                 }
                 else if (data.type === "call_incoming") {
                     showIncomingCall(data.from, data.call_id);
@@ -553,6 +578,27 @@
             };
         }
 
+        function incrementUnreadCount(contactId) {
+            if (!unreadMessages[contactId]) {
+                unreadMessages[contactId] = 0;
+            }
+            unreadMessages[contactId]++;
+            
+            const unreadBadge = document.getElementById(`unread-${contactId}`);
+            if (unreadBadge) {
+                unreadBadge.textContent = unreadMessages[contactId];
+                unreadBadge.style.display = 'flex';
+            }
+        }
+
+        function resetUnreadCount(contactId) {
+            unreadMessages[contactId] = 0;
+            const unreadBadge = document.getElementById(`unread-${contactId}`);
+            if (unreadBadge) {
+                unreadBadge.style.display = 'none';
+            }
+        }
+
         function selectContact(contactId, contactUsername, contactName) {
             // Обновляем активный контакт
             document.querySelectorAll('.contact-item').forEach(item => {
@@ -562,6 +608,9 @@
 
             currentContact = contactId;
             currentContactName = contactName;
+
+            // Сбрасываем счетчик непрочитанных
+            resetUnreadCount(contactId);
 
             // Показываем контейнер чата
             document.getElementById('chatContainer').style.display = 'flex';
@@ -763,9 +812,10 @@
                 if (result.success) {
                     alert(`Контакт ${result.contact_name} (@${result.contact_username}) успешно добавлен`);
                     // Обновляем список контактов
-                    const contactsList = document.querySelector('.contacts-list');
+                    const contactsList = document.getElementById('contactsList');
                     const newContact = document.createElement('div');
                     newContact.className = 'contact-item';
+                    newContact.setAttribute('data-contact-id', result.contact_id);
                     newContact.onclick = () => selectContact(result.contact_id, result.contact_username, result.contact_name);
                     newContact.innerHTML = `
                         <div class="contact-avatar">${result.contact_name[0].toUpperCase()}</div>
@@ -773,6 +823,7 @@
                             <div class="contact-name">${result.contact_name}</div>
                             <div class="contact-username">${result.contact_username}</div>
                         </div>
+                        <div class="unread-badge" id="unread-${result.contact_id}" style="display: none;"></div>
                     `;
                     contactsList.appendChild(newContact);
                     document.getElementById('newContactInput').value = '';
