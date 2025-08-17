@@ -726,7 +726,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 manager.pending_calls[call_id] = {
                     "from": user_id,
                     "to": data["to"],
-                    "status": "waiting"
+                    "status": "waiting",
+                    "timestamp": datetime.now()
                 }
                 await manager.send_json(data["to"], {
                     "type": "call_incoming",
@@ -743,51 +744,81 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             elif data["type"] == "call_accept":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                    # Удаляем звонок из ожидающих перед отправкой подтверждения
+                    call_data = manager.pending_calls.pop(call_id)
+                    await manager.send_json(call_data["from"], {
                         "type": "call_accepted",
                         "call_id": call_id,
                         "by": user_id
                     })
-                    del manager.pending_calls[call_id]
 
             elif data["type"] == "call_reject":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                    call_data = manager.pending_calls.pop(call_id)
+                    await manager.send_json(call_data["from"], {
                         "type": "call_rejected",
                         "call_id": call_id,
-                        "by": user_id
+                        "by": user_id,
+                        "reason": "Call rejected by recipient"
                     })
-                    del manager.pending_calls[call_id]
 
             elif data["type"] == "webrtc_offer":
-                await manager.send_json(data["to"], {
-                    "type": "webrtc_offer",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "offer": data["offer"],
-                    "is_audio_only": True
-                })
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:  # Проверяем, что пользователь участник звонка
+                    await manager.send_json(data["to"], {
+                        "type": "webrtc_offer",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "offer": data["offer"],
+                        "is_audio_only": data.get("is_audio_only", True)
+                    })
 
             elif data["type"] == "webrtc_answer":
-                await manager.send_json(data["to"], {
-                    "type": "webrtc_answer",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "answer": data["answer"]
-                })
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
+                    await manager.send_json(data["to"], {
+                        "type": "webrtc_answer",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "answer": data["answer"]
+                    })
 
             elif data["type"] == "ice_candidate":
-                await manager.send_json(data["to"], {
-                    "type": "ice_candidate",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "candidate": data["candidate"]
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
+                    await manager.send_json(data["to"], {
+                        "type": "ice_candidate",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "candidate": data["candidate"]
+                    })
+
+            elif data["type"] == "call_end":
+                call_id = data["call_id"]
+                other_user = call_id.split('_')[0] if call_id.split('_')[1] == user_id else call_id.split('_')[1]
+                await manager.send_json(other_user, {
+                    "type": "call_ended",
+                    "call_id": call_id,
+                    "by": user_id
                 })
+                # Очищаем pending calls
+                if call_id in manager.pending_calls:
+                    manager.pending_calls.pop(call_id)
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
         logger.info(f"User {user_id} disconnected")
+        # Отменяем все ожидающие звонки от этого пользователя
+        for call_id, call_data in list(manager.pending_calls.items()):
+            if call_data["from"] == user_id:
+                await manager.send_json(call_data["to"], {
+                    "type": "call_rejected",
+                    "call_id": call_id,
+                    "by": user_id,
+                    "reason": "Caller disconnected"
+                })
+                manager.pending_calls.pop(call_id)
     except Exception as e:
         logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
