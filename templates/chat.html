@@ -93,6 +93,36 @@
             color: var(--light-text);
         }
 
+        /* Добавление контактов */
+        .add-contact-container {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        .add-contact-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .add-contact-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0 15px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .add-contact-btn:hover {
+            background: #1991db;
+        }
+
         /* Список контактов */
         .contacts-list {
             flex: 1;
@@ -373,26 +403,34 @@
     <!-- Контейнер контактов -->
     <div class="contacts-container">
         <div class="contacts-header">
-            <div>Мои контакты</div>
+            <div>Контакты</div>
             <button class="profile-btn" onclick="window.location.href='/profile'">Профиль</button>
         </div>
 
+        <!-- Поиск контактов -->
         <div class="search-container">
             <div class="search-box">
                 <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" placeholder="Поиск контактов" id="searchContacts">
+                <input type="text" id="searchContacts" class="search-input" placeholder="Поиск контактов...">
             </div>
         </div>
 
-        <div class="contacts-list" id="contactsList">
+        <!-- Добавление нового контакта -->
+        <div class="add-contact-container">
+            <input type="text" id="newContactInput" class="add-contact-input" placeholder="Введите юзернейм (начинается с #)">
+            <button id="addContactBtn" class="add-contact-btn">+</button>
+        </div>
+
+        <!-- Список контактов -->
+        <div class="contacts-list">
             {% for contact in contacts %}
-                <div class="contact-item" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
-                    <div class="contact-avatar">{{ contact.name[0]|upper }}</div>
-                    <div class="contact-info">
-                        <div class="contact-name">{{ contact.name }}</div>
-                        <div class="contact-username">{{ contact.username }}</div>
-                    </div>
+            <div class="contact-item" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
+                <div class="contact-avatar">{{ contact.name[0]|upper }}</div>
+                <div class="contact-info">
+                    <div class="contact-name">{{ contact.name }}</div>
+                    <div class="contact-username">{{ contact.username }}</div>
                 </div>
+            </div>
             {% endfor %}
         </div>
     </div>
@@ -699,6 +737,54 @@
             alert(message);
         }
 
+        // Функция для добавления контакта
+        async function addContact() {
+            const contactUsername = document.getElementById('newContactInput').value.trim();
+
+            if (!contactUsername) {
+                alert('Введите юзернейм контакта');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        contact_username: contactUsername
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`Контакт ${result.contact_name} (@${result.contact_username}) успешно добавлен`);
+                    // Обновляем список контактов
+                    const contactsList = document.querySelector('.contacts-list');
+                    const newContact = document.createElement('div');
+                    newContact.className = 'contact-item';
+                    newContact.onclick = () => selectContact(result.contact_id, result.contact_username, result.contact_name);
+                    newContact.innerHTML = `
+                        <div class="contact-avatar">${result.contact_name[0].toUpperCase()}</div>
+                        <div class="contact-info">
+                            <div class="contact-name">${result.contact_name}</div>
+                            <div class="contact-username">${result.contact_username}</div>
+                        </div>
+                    `;
+                    contactsList.appendChild(newContact);
+                    document.getElementById('newContactInput').value = '';
+                } else {
+                    alert(result.message);
+                }
+            } catch (error) {
+                console.error('Ошибка при добавлении контакта:', error);
+                alert('Произошла ошибка при добавлении контакта');
+            }
+        }
+
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
             connectWebSocket();
@@ -722,6 +808,17 @@
 
             // Обработчик кнопки звонка
             document.getElementById('startCallBtn').addEventListener('click', startAudioCall);
+
+            // Обработчик кнопки добавления контакта
+            document.getElementById('addContactBtn').addEventListener('click', addContact);
+
+            // Обработчик нажатия Enter в поле добавления контакта
+            document.getElementById('newContactInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addContact();
+                }
+            });
 
             // Поиск контактов
             document.getElementById('searchContacts').addEventListener('input', function() {
