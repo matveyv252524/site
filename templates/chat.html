@@ -395,7 +395,7 @@
         .connected #connection-status {
             background: #17bf63;
         }
-        
+
         /* Уведомление о новом сообщении */
         .unread-badge {
             background-color: var(--primary-color);
@@ -551,7 +551,7 @@
                 if (data.type === "message") {
                     // Проверяем, активен ли чат с отправителем
                     const isActiveChat = currentContact === data.from;
-                    
+
                     if (isActiveChat) {
                         // Если чат активен, сразу отображаем сообщение
                         displayMessage(data.from, data.message, true, data.timestamp);
@@ -583,7 +583,7 @@
                 unreadMessages[contactId] = 0;
             }
             unreadMessages[contactId]++;
-            
+
             const unreadBadge = document.getElementById(`unread-${contactId}`);
             if (unreadBadge) {
                 unreadBadge.textContent = unreadMessages[contactId];
@@ -702,27 +702,35 @@
         }
 
         function showIncomingCall(from, callId) {
-            document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
-            document.getElementById('incomingCallNotification').style.display = 'block';
+        document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
+        document.getElementById('incomingCallNotification').style.display = 'block';
 
-            // Настройка обработчиков кнопок
-            document.getElementById('acceptCallBtn').onclick = () => {
-                document.getElementById('incomingCallNotification').style.display = 'none';
+        // Настройка обработчиков кнопок
+        document.getElementById('acceptCallBtn').onclick = async () => {
+            document.getElementById('incomingCallNotification').style.display = 'none';
+            try {
+                // Отправляем подтверждение принятия звонка
                 ws.send(JSON.stringify({
                     type: "call_accept",
                     call_id: callId
                 }));
-                window.location.href = `/call/${callId}`;
-            };
 
-            document.getElementById('rejectCallBtn').onclick = () => {
-                document.getElementById('incomingCallNotification').style.display = 'none';
-                ws.send(JSON.stringify({
-                    type: "call_reject",
-                    call_id: callId
-                }));
-            };
-        }
+                // Перенаправляем на страницу звонка
+                window.location.href = `/call/${callId}`;
+            } catch (error) {
+                console.error("Ошибка при принятии звонка:", error);
+                alert("Произошла ошибка при принятии звонка");
+            }
+        };
+
+        document.getElementById('rejectCallBtn').onclick = () => {
+            document.getElementById('incomingCallNotification').style.display = 'none';
+            ws.send(JSON.stringify({
+                type: "call_reject",
+                call_id: callId
+            }));
+        };
+    }
 
         function showWaitingNotification(callId) {
             currentCallId = callId;
