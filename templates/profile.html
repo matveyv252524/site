@@ -48,6 +48,12 @@
             color: #657786;
             margin-bottom: 10px;
         }
+        .profile-alternate-usernames {
+            color: #657786;
+            font-size: 14px;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
         .profile-description {
             color: #14171a;
             line-height: 1.5;
@@ -107,6 +113,11 @@
         <div class="profile-info">
             <div class="profile-name">{{ profile.name }}</div>
             <div class="profile-username">{{ profile.username }}</div>
+            {% if profile.alternate_usernames %}
+            <div class="profile-alternate-usernames">
+                Также известен как: {{ profile.alternate_usernames|join(', ') }}
+            </div>
+            {% endif %}
             <div class="profile-description">{{ profile.description or "Нет описания" }}</div>
         </div>
 
