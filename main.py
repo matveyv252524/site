@@ -1,3 +1,4 @@
+# main.py (обновленная версия)
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException
@@ -33,6 +34,11 @@ DB_CONFIG = {
     "password": "bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
     "port": "5432",
     "sslmode": "require"
+}
+
+# Альтернативные юзернеймы для аккаунтов
+ALTERNATE_USERNAMES = {
+    "#admin": ["#creator"]
 }
 
 
@@ -113,6 +119,14 @@ def init_db():
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS alternate_usernames (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                username TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id),
@@ -140,6 +154,21 @@ def init_db():
                 logger.error(f"Error creating table: {str(e)}")
                 raise
 
+        # Добавляем альтернативные юзернеймы для администратора
+        cursor.execute("SELECT id FROM users WHERE username = '#admin'")
+        admin = cursor.fetchone()
+
+        if admin:
+            admin_id = admin[0]
+            for alt_username in ALTERNATE_USERNAMES.get("#admin", []):
+                try:
+                    cursor.execute(
+                        "INSERT INTO alternate_usernames (user_id, username) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (admin_id, alt_username)
+                    )
+                except Exception as e:
+                    logger.error(f"Error adding alternate username {alt_username}: {str(e)}")
+
         conn.commit()
         logger.info("All tables initialized successfully")
     except Exception as e:
@@ -155,25 +184,43 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
-    """Аутентифицирует пользователя"""
+def get_user_by_username(username: str) -> Optional[tuple]:
+    """Получает пользователя по юзернейму (основному или альтернативному)"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+
+        # Сначала проверяем основной юзернейм
         cursor.execute(
             'SELECT id, username, name, password FROM users WHERE username = %s',
             (username,)
         )
         user = cursor.fetchone()
 
-        if user and user[3] == hash_password(password):
-            return {"id": user[0], "username": user[1], "name": user[2]}
-        return None
+        if user:
+            return user
+
+        # Если не найден, проверяем альтернативные юзернеймы
+        cursor.execute(
+            'SELECT u.id, u.username, u.name, u.password FROM users u '
+            'JOIN alternate_usernames a ON u.id = a.user_id WHERE a.username = %s',
+            (username,)
+        )
+        return cursor.fetchone()
     except Exception as e:
-        logger.error(f"Error authenticating user: {str(e)}")
+        logger.error(f"Error getting user by username: {str(e)}")
         return None
     finally:
         conn.close()
+
+
+def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Аутентифицирует пользователя"""
+    user = get_user_by_username(username)
+
+    if user and user[3] == hash_password(password):
+        return {"id": user[0], "username": user[1], "name": user[2]}
+    return None
 
 
 def register_user(username: str, password: str, name: str, description: str = "") -> Optional[dict]:
@@ -209,15 +256,20 @@ def get_user_profile(user_id: int) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT username, name, description 
-            FROM users WHERE id = %s
+            SELECT u.username, u.name, u.description,
+                   ARRAY_AGG(a.username) AS alternate_usernames
+            FROM users u
+            LEFT JOIN alternate_usernames a ON u.id = a.user_id
+            WHERE u.id = %s
+            GROUP BY u.id, u.username, u.name, u.description
         ''', (user_id,))
         result = cursor.fetchone()
         if result:
             return {
                 "username": result[0],
                 "name": result[1],
-                "description": result[2]
+                "description": result[2],
+                "alternate_usernames": [u for u in (result[3] or []) if u]  # Фильтруем NULL значения
             }
         return None
     except Exception as e:
@@ -403,8 +455,6 @@ async def register(
         )
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
-
-    # Исправленная часть - кодируем имя пользователя в utf-8 перед установкой cookie
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
     response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
@@ -533,8 +583,14 @@ async def add_contact(request: Request):
             if contact_username == current_username:
                 return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-            # Поиск контакта
-            cursor.execute('SELECT id, username, name FROM users WHERE LOWER(username) = %s', (contact_username,))
+            # Поиск контакта (основной или альтернативный юзернейм)
+            cursor.execute('''
+                SELECT u.id, u.username, u.name 
+                FROM users u
+                LEFT JOIN alternate_usernames a ON u.id = a.user_id
+                WHERE LOWER(u.username) = %s OR LOWER(a.username) = %s
+                LIMIT 1
+            ''', (contact_username, contact_username))
             contact = cursor.fetchone()
 
             if not contact:
