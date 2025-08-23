@@ -3,54 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}FastAPI Мессенджер{% endblock %}</title>
+    <title>{% block title %}Neon Messenger{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #1da1f2;
-            --secondary-color: #e8f5fe;
-            --error-color: #e0245e;
-            --background: #f5f8fa;
-            --white: #ffffff;
-            --text-color: #14171a;
-            --light-text: #657786;
-            --border-color: #e6ecf0;
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --success-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --dark-bg: #0f0f1a;
+            --darker-bg: #0a0a12;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.5);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         body {
-            background: var(--background);
-            color: var(--text-color);
+            background: var(--dark-bg);
+            color: var(--text-primary);
             line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.15) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientShift 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
         }
 
         a {
-            color: var(--primary-color);
+            color: var(--text-primary);
             text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        a:hover {
+            color: #667eea;
+            transform: translateY(-1px);
         }
 
         button {
             cursor: pointer;
+            border: none;
+            outline: none;
+            transition: all 0.3s ease;
         }
 
         .btn {
             display: inline-block;
-            padding: 8px 16px;
-            background: var(--primary-color);
+            padding: 12px 24px;
+            background: var(--primary-gradient);
             color: white;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            transition: background 0.2s;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
         }
 
         .btn:hover {
-            background: #1991db;
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
         }
 
         .container {
@@ -60,10 +98,13 @@
         }
 
         header {
-            background: var(--primary-color);
-            color: white;
+            background: rgba(15, 15, 26, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--card-border);
             padding: 15px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
 
         .header-content {
@@ -73,37 +114,84 @@
         }
 
         .logo {
-            font-size: 24px;
-            font-weight: bold;
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .nav-links {
             display: flex;
-            gap: 20px;
+            gap: 25px;
             align-items: center;
         }
 
         .nav-link {
-            color: white;
+            color: var(--text-secondary);
             font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .user-info {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
         .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: white;
-            color: var(--primary-color);
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 16px;
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        /* Анимации */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .animate-fadeIn {
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .animate-slideIn {
+            animation: slideInLeft 0.6s ease-out;
+        }
+
+        .animate-pulse {
+            animation: pulse 2s infinite;
         }
     </style>
     {% block styles %}{% endblock %}
@@ -112,20 +200,20 @@
     <header>
         <div class="container">
             <div class="header-content">
-                <a href="/" class="logo">FastAPI Messenger</a>
+                <a href="/" class="logo">Neon Messenger</a>
                 <div class="nav-links">
                     {% if request.cookies.get('user_id') %}
-                        <a href="/chat/{{ request.cookies.get('user_id') }}" class="nav-link">Чат</a>
-                        <a href="/profile" class="nav-link">Профиль</a>
+                        <a href="/chat/{{ request.cookies.get('user_id') }}" class="nav-link">💬 Чат</a>
+                        <a href="/profile" class="nav-link">👤 Профиль</a>
                         <div class="user-info">
                             <div class="user-avatar">
                                 {{ request.cookies.get('name')[0]|upper }}
                             </div>
-                            <a href="/logout" class="nav-link">Выйти</a>
+                            <a href="/logout" class="nav-link">🚪 Выйти</a>
                         </div>
                     {% else %}
-                        <a href="/login" class="nav-link">Вход</a>
-                        <a href="/register" class="nav-link">Регистрация</a>
+                        <a href="/login" class="nav-link">🔑 Вход</a>
+                        <a href="/register" class="nav-link">✨ Регистрация</a>
                     {% endif %}
                 </div>
             </div>
