@@ -534,6 +534,34 @@
     </div>
 
     <script>
+        let ws = null;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 10;
+let connectionCheckInterval = null;
+
+// Функция проверки соединения
+function startConnectionCheck() {
+    if (connectionCheckInterval) {
+        clearInterval(connectionCheckInterval);
+    }
+
+    connectionCheckInterval = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            console.log("Connection lost, attempting to reconnect...");
+            connectWebSocket();
+        }
+    }, 5000); // Проверяем каждые 5 секунд
+}
+
+// Останавливаем проверку при закрытии страницы
+window.addEventListener('beforeunload', () => {
+    if (connectionCheckInterval) {
+        clearInterval(connectionCheckInterval);
+    }
+    if (ws) {
+        ws.close();
+    }
+});
         const userId = "{{ user_id }}";
         const username = "{{ username }}";
         const name = "{{ name }}";
@@ -557,113 +585,143 @@
             }
         }
 
-        function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
+       function connectWebSocket() {
+    try {
+        // Получаем текущий хост и порт
+        const host = window.location.host;
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 
-    ws.onopen = () => {
-        updateStatus("Подключено");
-        reconnectAttempts = 0;
-        console.log("WebSocket connected");
+        // Создаем WebSocket соединение
+        ws = new WebSocket(`${protocol}${host}/ws/${userId}`);
 
-        // Загружаем сообщения если есть активный контакт
-        if (currentContact) {
-            loadMessages(currentContact);
+        console.log("Connecting to WebSocket:", `${protocol}${host}/ws/${userId}`);
 
-            // Отмечаем сообщения как прочитанные
-            ws.send(JSON.stringify({
-                type: "mark_read",
-                contact_id: currentContact
-            }));
-        }
+        ws.onopen = () => {
+            console.log("✅ WebSocket connected successfully");
+            updateStatus("Подключено");
+            reconnectAttempts = 0;
 
-        // Запрашиваем разрешение на уведомления
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    console.log("Notification permission granted");
+            // Загружаем сообщения если есть активный контакт
+            if (currentContact) {
+                loadMessages(currentContact);
+
+                // Отмечаем сообщения как прочитанные
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: "mark_read",
+                            contact_id: currentContact
+                        }));
+                    }
+                }, 1000);
+            }
+
+            // Запрашиваем разрешение на уведомления
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log("Notification permission granted");
+                    }
+                });
+            }
+        };
+
+        ws.onclose = (event) => {
+            console.log("❌ WebSocket disconnected:", event.code, event.reason);
+            updateStatus("Отключено");
+
+            if (reconnectAttempts < maxReconnectAttempts) {
+                const delay = Math.min(1000 * (reconnectAttempts + 1), 10000);
+                console.log(`Reconnecting in ${delay}ms...`);
+                setTimeout(connectWebSocket, delay);
+                reconnectAttempts++;
+            } else {
+                console.log("Max reconnection attempts reached");
+                showNotification("Соединение потеряно. Перезагрузите страницу.");
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+            updateStatus("Ошибка соединения");
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log("📨 WebSocket message received:", data);
+
+                if (data.type === "message") {
+                    handleIncomingMessage(data);
                 }
-            });
-        }
-    };
+                else if (data.type === "call_incoming") {
+                    showIncomingCall(data.from, data.call_id);
+                }
+                else if (data.type === "call_waiting") {
+                    showWaitingNotification(data.call_id);
+                }
+                else if (data.type === "call_accepted") {
+                    handleCallAccepted(data.call_id);
+                }
+                else if (data.type === "call_rejected") {
+                    handleCallRejected(data.by, data.reason);
+                }
+                else if (data.type === "call_ended") {
+                    handleCallEnded(data.by);
+                }
+                else if (data.type === "notification") {
+                    showNotification(data.message);
+                }
 
-    ws.onclose = () => {
-        updateStatus("Отключено");
-        console.log("WebSocket disconnected");
+            } catch (error) {
+                console.error("Error parsing WebSocket message:", error, event.data);
+            }
+        };
 
+    } catch (error) {
+        console.error("Error creating WebSocket:", error);
+        updateStatus("Ошибка подключения");
+
+        // Пытаемся переподключиться
         if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
-            console.log(`Reconnecting in ${delay}ms...`);
+            const delay = 2000;
             setTimeout(connectWebSocket, delay);
             reconnectAttempts++;
-        } else {
-            console.log("Max reconnection attempts reached");
-            showNotification("Соединение потеряно. Перезагрузите страницу.");
         }
-    };
+    }
+}
 
-    ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        updateStatus("Ошибка");
-    };
+// Добавьте функцию обработки входящих сообщений
+function handleIncomingMessage(data) {
+    // Проверяем, активен ли чат с отправителем
+    const isActiveChat = currentContact === data.from;
 
-    ws.onmessage = (event) => {
-        console.log("WebSocket message received:", event.data);
-        try {
-            const data = JSON.parse(event.data);
+    if (isActiveChat) {
+        // Если чат активен, сразу отображаем сообщение
+        displayMessage(data.from, data.message, true, data.timestamp, data.sender_name);
 
-            if (data.type === "message") {
-                // Проверяем, активен ли чат с отправителем
-                const isActiveChat = currentContact === data.from;
+        // Прокручиваем к новому сообщению
+        setTimeout(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }, 100);
 
-                if (isActiveChat) {
-                    // Если чат активен, сразу отображаем сообщение
-                    displayMessage(data.from, data.message, true, data.timestamp, data.sender_name);
-
-                    // Прокручиваем к новому сообщению
-                    setTimeout(() => {
-                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                    }, 100);
-
-                    // Отмечаем сообщение как прочитанное на сервере
-                    ws.send(JSON.stringify({
-                        type: "mark_read",
-                        contact_id: data.from
-                    }));
-                } else {
-                    // Если чат не активен, добавляем уведомление
-                    incrementUnreadCount(data.from);
-
-                    // Показываем уведомление
-                    showNotification(`Новое сообщение от ${data.sender_name}: ${data.message}`);
-
-                    // Мигаем вкладкой браузера
-                    flashTab(`💬 ${data.sender_name}`);
-                }
-            }
-            else if (data.type === "call_incoming") {
-                showIncomingCall(data.from, data.call_id);
-            }
-            else if (data.type === "call_waiting") {
-                showWaitingNotification(data.call_id);
-            }
-            else if (data.type === "call_accepted") {
-                handleCallAccepted(data.call_id);
-            }
-            else if (data.type === "call_rejected") {
-                handleCallRejected(data.by, data.reason);
-            }
-            else if (data.type === "call_ended") {
-                handleCallEnded(data.by);
-            }
-            else if (data.type === "notification") {
-                showNotification(data.message);
-            }
-
-        } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+        // Отмечаем сообщение как прочитанное на сервере
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: "mark_read",
+                contact_id: data.from
+            }));
         }
-    };
+    } else {
+        // Если чат не активен, добавляем уведомление
+        incrementUnreadCount(data.from);
+
+        // Показываем уведомление
+        showNotification(`Новое сообщение от ${data.sender_name}: ${data.message}`);
+
+        // Мигаем вкладкой браузера
+        flashTab(`💬 ${data.sender_name}`);
+    }
 }
 
 // Добавьте эти вспомогательные функции:
@@ -859,32 +917,42 @@ function selectContact(contactId, contactUsername, contactName) {
         }
 
         function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
 
-            if (!message || !currentContact) return;
+    if (!message || !currentContact) return;
 
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Соединение потеряно. Пытаемся переподключиться...");
-                connectWebSocket();
-                return;
+    // Проверяем соединение
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.warn("WebSocket not connected, attempting to reconnect...");
+        connectWebSocket();
+
+        // Ждем немного перед повторной попыткой
+        setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                sendMessage();
+            } else {
+                alert("Нет соединения. Сообщение не отправлено.");
             }
+        }, 1000);
+        return;
+    }
 
-            try {
-                ws.send(JSON.stringify({
-                    type: "message",
-                    to: currentContact,
-                    message: message
-                }));
+    try {
+        ws.send(JSON.stringify({
+            type: "message",
+            to: currentContact,
+            message: message
+        }));
 
-                displayMessage(userId, message, false, new Date().toISOString());
-                input.value = '';
-                input.style.height = '40px';
-            } catch (e) {
-                console.error("Error sending message:", e);
-                alert("Не удалось отправить сообщение");
-            }
-        }
+        displayMessage(userId, message, false, new Date().toISOString());
+        input.value = '';
+        input.style.height = '40px';
+    } catch (e) {
+        console.error("Error sending message:", e);
+        alert("Не удалось отправить сообщение");
+    }
+}
 
         function showIncomingCall(from, callId) {
         document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
@@ -1031,8 +1099,13 @@ function selectContact(contactId, contactUsername, contactName) {
 
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
-            connectWebSocket();
+    console.log("Initializing Talkify chat...");
 
+    // Подключаемся к WebSocket
+    connectWebSocket();
+
+    // Запускаем проверку соединения
+    startConnectionCheck();
             // Обработчик отправки сообщения
             document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
 
