@@ -38,7 +38,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: 
+            background:
                 radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
                 radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
             z-index: -1;
@@ -558,71 +558,210 @@
         }
 
         function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-            ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
+    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
-            ws.onopen = () => {
-                updateStatus("Подключено");
-                reconnectAttempts = 0;
-                console.log("WebSocket connected");
+    ws.onopen = () => {
+        updateStatus("Подключено");
+        reconnectAttempts = 0;
+        console.log("WebSocket connected");
 
-                if (currentContact) {
-                    loadMessages(currentContact);
-                }
-            };
+        // Загружаем сообщения если есть активный контакт
+        if (currentContact) {
+            loadMessages(currentContact);
 
-            ws.onclose = () => {
-                updateStatus("Отключено");
-                console.log("WebSocket disconnected");
-
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
-                    console.log(`Reconnecting in ${delay}ms...`);
-                    setTimeout(connectWebSocket, delay);
-                    reconnectAttempts++;
-                } else {
-                    console.log("Max reconnection attempts reached");
-                }
-            };
-
-            ws.onerror = (error) => {
-                console.error("WebSocket error:", error);
-                updateStatus("Ошибка");
-            };
-
-            ws.onmessage = (event) => {
-                console.log("WebSocket message received:", event.data);
-                const data = JSON.parse(event.data);
-
-                if (data.type === "message") {
-                    // Проверяем, активен ли чат с отправителем
-                    const isActiveChat = currentContact === data.from;
-
-                    if (isActiveChat) {
-                        // Если чат активен, сразу отображаем сообщение
-                        displayMessage(data.from, data.message, true, data.timestamp);
-                    } else {
-                        // Если чат не активен, добавляем уведомление
-                        incrementUnreadCount(data.from);
-                    }
-                }
-                else if (data.type === "call_incoming") {
-                    showIncomingCall(data.from, data.call_id);
-                }
-                else if (data.type === "call_waiting") {
-                    showWaitingNotification(data.call_id);
-                }
-                else if (data.type === "call_accepted") {
-                    handleCallAccepted(data.call_id);
-                }
-                else if (data.type === "call_rejected") {
-                    handleCallRejected(data.by);
-                }
-                else if (data.type === "notification") {
-                    showNotification(data.message);
-                }
-            };
+            // Отмечаем сообщения как прочитанные
+            ws.send(JSON.stringify({
+                type: "mark_read",
+                contact_id: currentContact
+            }));
         }
+
+        // Запрашиваем разрешение на уведомления
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    console.log("Notification permission granted");
+                }
+            });
+        }
+    };
+
+    ws.onclose = () => {
+        updateStatus("Отключено");
+        console.log("WebSocket disconnected");
+
+        if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
+            console.log(`Reconnecting in ${delay}ms...`);
+            setTimeout(connectWebSocket, delay);
+            reconnectAttempts++;
+        } else {
+            console.log("Max reconnection attempts reached");
+            showNotification("Соединение потеряно. Перезагрузите страницу.");
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        updateStatus("Ошибка");
+    };
+
+    ws.onmessage = (event) => {
+        console.log("WebSocket message received:", event.data);
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "message") {
+                // Проверяем, активен ли чат с отправителем
+                const isActiveChat = currentContact === data.from;
+
+                if (isActiveChat) {
+                    // Если чат активен, сразу отображаем сообщение
+                    displayMessage(data.from, data.message, true, data.timestamp, data.sender_name);
+
+                    // Прокручиваем к новому сообщению
+                    setTimeout(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    }, 100);
+
+                    // Отмечаем сообщение как прочитанное на сервере
+                    ws.send(JSON.stringify({
+                        type: "mark_read",
+                        contact_id: data.from
+                    }));
+                } else {
+                    // Если чат не активен, добавляем уведомление
+                    incrementUnreadCount(data.from);
+
+                    // Показываем уведомление
+                    showNotification(`Новое сообщение от ${data.sender_name}: ${data.message}`);
+
+                    // Мигаем вкладкой браузера
+                    flashTab(`💬 ${data.sender_name}`);
+                }
+            }
+            else if (data.type === "call_incoming") {
+                showIncomingCall(data.from, data.call_id);
+            }
+            else if (data.type === "call_waiting") {
+                showWaitingNotification(data.call_id);
+            }
+            else if (data.type === "call_accepted") {
+                handleCallAccepted(data.call_id);
+            }
+            else if (data.type === "call_rejected") {
+                handleCallRejected(data.by, data.reason);
+            }
+            else if (data.type === "call_ended") {
+                handleCallEnded(data.by);
+            }
+            else if (data.type === "notification") {
+                showNotification(data.message);
+            }
+
+        } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+        }
+    };
+}
+
+// Добавьте эти вспомогательные функции:
+
+function showNotification(message) {
+    // Браузерные уведомления
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Talkify', {
+            body: message,
+            icon: '/favicon.ico',
+            tag: 'talkify-message'
+        });
+    }
+
+    // Встроенные уведомления в интерфейсе
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--primary-gradient);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        z-index: 10000;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        animation: slideInRight 0.3s ease-out;
+        max-width: 300px;
+        word-wrap: break-word;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+function flashTab(title) {
+    const originalTitle = document.title;
+    let isFlashing = false;
+    let flashCount = 0;
+    const maxFlashes = 5;
+
+    const flash = () => {
+        if (flashCount >= maxFlashes) {
+            document.title = originalTitle;
+            return;
+        }
+
+        isFlashing = !isFlashing;
+        document.title = isFlashing ? title : originalTitle;
+        flashCount++;
+
+        setTimeout(flash, 1000);
+    };
+
+    flash();
+}
+
+// Добавьте стили для анимаций
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+
+    @keyframes pulseUnread {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+    }
+`;
+document.head.appendChild(style);
+
+// Функция для отметки сообщений как прочитанных при открытии чата
+function markMessagesAsRead(contactId) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: "mark_read",
+            contact_id: contactId
+        }));
+    }
+}
+
+// Обновите функцию selectContact для отметки сообщений как прочитанных
+function selectContact(contactId, contactUsername, contactName) {
+    // ... существующий код ...
+
+    // Отмечаем сообщения как прочитанные
+    markMessagesAsRead(contactId);
+    resetUnreadCount(contactId);
 
         function incrementUnreadCount(contactId) {
             if (!unreadMessages[contactId]) {
@@ -945,4 +1084,3 @@
     </script>
 </body>
 </html>
-
