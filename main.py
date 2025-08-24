@@ -429,6 +429,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
+# ======================
+# CORS НАСТРОЙКИ
+# ======================
+
+from fastapi.middleware.cors import CORSMiddleware
+
+# Добавьте CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Разрешаем все origins (для разработки)
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы
+    allow_headers=["*"],  # Разрешаем все заголовки
+)
 
 # ======================
 # МАРШРУТЫ ПРИЛОЖЕНИЯ
