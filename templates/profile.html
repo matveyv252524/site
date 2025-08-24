@@ -1,32 +1,106 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Профиль</title>
+    <title>Профиль - Neon Messenger</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f5f8fa;
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --dark-bg: #0f0f1a;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+        }
+
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
+
+        body {
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientFloat 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientFloat {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-20px) scale(1.02); }
+        }
+
         .profile-container {
+            width: 100%;
             max-width: 500px;
-            margin: 50px auto;
-            padding: 30px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            animation: fadeInUp 0.8s ease-out;
         }
-        h2 {
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .profile-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow:
+                0 25px 50px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .profile-header {
             text-align: center;
-            color: #1da1f2;
-            margin-bottom: 25px;
+            margin-bottom: 35px;
         }
+
+        .profile-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+
         .avatar {
             width: 100px;
             height: 100px;
-            border-radius: 50%;
-            background: #1da1f2;
+            border-radius: 20px;
+            background: var(--primary-gradient);
             color: white;
             display: flex;
             align-items: center;
@@ -34,234 +108,184 @@
             margin: 0 auto 20px;
             font-size: 40px;
             font-weight: bold;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
         }
+
         .profile-info {
             margin-bottom: 30px;
             text-align: center;
         }
+
         .profile-name {
             font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 5px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
         }
+
         .profile-username {
-            color: #657786;
-            margin-bottom: 10px;
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin-bottom: 12px;
         }
+
         .profile-alternate-usernames {
-            color: #657786;
+            color: var(--text-secondary);
             font-size: 14px;
-            margin-bottom: 10px;
             font-style: italic;
-        }
-        .profile-description {
-            color: #14171a;
-            line-height: 1.5;
-        }
-        .form-group {
             margin-bottom: 15px;
         }
-        label {
+
+        .profile-description {
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            animation: slideInRight 0.6s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .form-label {
             display: block;
-            margin-bottom: 5px;
-            color: #657786;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
             font-size: 14px;
+            font-weight: 500;
         }
-        input, textarea {
+
+        .form-input {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #e6ecf0;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 14px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
         }
-        textarea {
-            height: 100px;
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        textarea.form-input {
             resize: vertical;
+            min-height: 100px;
         }
-        button {
+
+        .btn-primary {
             width: 100%;
-            padding: 12px;
-            background: #1da1f2;
+            padding: 16px;
+            background: var(--primary-gradient);
             color: white;
             border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            border-radius: 12px;
             font-size: 16px;
-            font-weight: bold;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
         }
-        button:hover {
-            background: #1991db;
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
         }
+
         .back-link {
             display: block;
             text-align: center;
-            margin-top: 20px;
-            color: #1da1f2;
+            margin-top: 25px;
+            color: var(--text-secondary);
             text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
         }
-        :root {
-        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --dark-bg: #0f0f1a;
-        --card-bg: rgba(255, 255, 255, 0.08);
-        --card-border: rgba(255, 255, 255, 0.12);
-        --text-primary: #ffffff;
-    }
 
-    body {
-        background: var(--dark-bg);
-        color: var(--text-primary);
-        font-family: 'Inter', sans-serif;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-    }
+        .back-link:hover {
+            color: #667eea;
+            text-decoration: underline;
+        }
 
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background:
-            radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
-        z-index: -1;
-        animation: float 6s ease-in-out infinite;
-    }
+        @media (max-width: 480px) {
+            .profile-container {
+                padding: 15px;
+            }
 
-    .auth-container {
-        width: 100%;
-        max-width: 400px;
-        padding: 20px;
-    }
+            .profile-card {
+                padding: 30px 25px;
+            }
 
-    .auth-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--card-border);
-        border-radius: 20px;
-        padding: 40px 30px;
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-        animation: fadeIn 0.8s ease-out;
-    }
+            .profile-title {
+                font-size: 24px;
+            }
 
-    .auth-header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-
-    .auth-title {
-        font-size: 28px;
-        font-weight: 700;
-        background: var(--primary-gradient);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 10px;
-    }
-
-    .auth-subtitle {
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 14px;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 8px;
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    .form-input {
-        width: 100%;
-        padding: 15px 20px;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid var(--card-border);
-        border-radius: 12px;
-        color: var(--text-primary);
-        font-size: 14px;
-        backdrop-filter: blur(10px);
-        transition: all 0.3s ease;
-    }
-
-    .form-input:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-    }
-
-    .btn-primary {
-        width: 100%;
-        padding: 15px;
-        background: var(--primary-gradient);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
-    }
-        .profile-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--card-border);
-        border-radius: 20px;
-        padding: 40px;
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-    }
+            .avatar {
+                width: 80px;
+                height: 80px;
+                font-size: 32px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="profile-container">
-        <h2>Ваш профиль</h2>
+        <div class="profile-card">
+            <div class="profile-header">
+                <h1 class="profile-title">Ваш профиль</h1>
+                <div class="avatar">
+                    {{ profile.name[0]|upper }}
+                </div>
+            </div>
 
-        <div class="avatar">
-            {{ profile.name[0]|upper }}
+            <div class="profile-info">
+                <div class="profile-name">{{ profile.name }}</div>
+                <div class="profile-username">{{ profile.username }}</div>
+                {% if profile.alternate_usernames %}
+                <div class="profile-alternate-usernames">
+                    Также известен как: {{ profile.alternate_usernames|join(', ') }}
+                </div>
+                {% endif %}
+                <div class="profile-description">{{ profile.description or "Нет описания" }}</div>
+            </div>
+
+            <form method="post" action="/update-profile">
+                <div class="form-group">
+                    <label for="name" class="form-label">Имя</label>
+                    <input type="text" id="name" name="name" class="form-input" value="{{ profile.name }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="description" class="form-label">Описание</label>
+                    <textarea id="description" name="description" class="form-input">{{ profile.description or "" }}</textarea>
+                </div>
+
+                <button type="submit" class="btn-primary">Сохранить изменения</button>
+            </form>
+
+            <a href="/chat/{{ request.cookies.get('user_id') }}" class="back-link">← Вернуться в чат</a>
         </div>
-
-        <div class="profile-info">
-            <div class="profile-name">{{ profile.name }}</div>
-            <div class="profile-username">{{ profile.username }}</div>
-            {% if profile.alternate_usernames %}
-            <div class="profile-alternate-usernames">
-                Также известен как: {{ profile.alternate_usernames|join(', ') }}
-            </div>
-            {% endif %}
-            <div class="profile-description">{{ profile.description or "Нет описания" }}</div>
-        </div>
-
-        <form method="post" action="/update-profile">
-            <div class="form-group">
-                <label for="name">Имя</label>
-                <input type="text" id="name" name="name" value="{{ profile.name }}" required>
-            </div>
-
-            <div class="form-group">
-                <label for="description">Описание</label>
-                <textarea id="description" name="description">{{ profile.description or "" }}</textarea>
-            </div>
-
-            <button type="submit">Сохранить изменения</button>
-        </form>
-
-        <a href="/chat/{{ request.cookies.get('user_id') }}" class="back-link">Вернуться в чат</a>
     </div>
 </body>
 </html>
