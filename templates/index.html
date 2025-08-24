@@ -1,168 +1,407 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FastAPI Мессенджер</title>
+    <title>Neon Messenger - Современный мессенджер</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #f5f8fa;
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --success-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --dark-bg: #0f0f1a;
+            --darker-bg: #0a0a12;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+        }
+
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            color: #14171a;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
+
+        body {
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
         }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.15) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientShift 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
         header {
-            background: #1da1f2;
-            color: white;
-            padding: 15px 0;
-            text-align: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: rgba(15, 15, 26, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--card-border);
+            padding: 20px 0;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
         }
+
         .header-content {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
+            padding: 0 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 20px;
         }
+
         .logo {
-            font-size: 24px;
-            font-weight: bold;
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
+
         .auth-buttons {
             display: flex;
-            gap: 10px;
+            gap: 15px;
         }
+
         .btn {
-            padding: 8px 16px;
-            background: white;
-            color: #1da1f2;
-            border-radius: 4px;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
             text-decoration: none;
-            font-weight: bold;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
         }
+
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
         .btn:hover {
-            background: #e8f5fe;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
         }
+
+        main {
+            margin-top: 80px;
+        }
+
         .hero {
             text-align: center;
-            padding: 60px 20px;
+            padding: 100px 20px;
+            position: relative;
         }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            background: var(--primary-gradient);
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.3;
+            z-index: -1;
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+        }
+
         .hero h1 {
-            font-size: 36px;
-            margin-bottom: 20px;
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #ffffff 0%, #cccccc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
+
         .hero p {
-            font-size: 18px;
-            color: #657786;
-            max-width: 700px;
-            margin: 0 auto 30px;
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
         }
+
         .cta-buttons {
             display: flex;
             justify-content: center;
-            gap: 15px;
+            gap: 20px;
+            margin-top: 40px;
         }
+
         .cta-btn {
-            padding: 12px 24px;
-            border-radius: 25px;
+            padding: 16px 32px;
+            border-radius: 16px;
             text-decoration: none;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
         }
-        .primary {
-            background: #1da1f2;
+
+        .cta-primary {
+            background: var(--primary-gradient);
             color: white;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
         }
-        .primary:hover {
-            background: #1991db;
+
+        .cta-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
         }
-        .secondary {
-            background: white;
-            color: #1da1f2;
-            border: 1px solid #1da1f2;
+
+        .cta-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.6);
         }
-        .secondary:hover {
-            background: #e8f5fe;
-        }
+
         .features {
+            padding: 80px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 30px;
-            padding: 40px 20px;
+            margin-top: 60px;
         }
+
         .feature-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .feature-icon {
-            font-size: 40px;
-            color: #1da1f2;
-            margin-bottom: 15px;
-        }
-        .feature-title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        footer {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 40px 30px;
             text-align: center;
-            padding: 20px;
-            color: #657786;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(102, 126, 234, 0.3);
+        }
+
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .feature-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-primary);
+        }
+
+        .feature-description {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        footer {
+            background: rgba(15, 15, 26, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--card-border);
+            padding: 40px 20px;
+            text-align: center;
+            margin-top: 80px;
+        }
+
+        footer p {
+            color: var(--text-secondary);
             font-size: 14px;
-            border-top: 1px solid #e6ecf0;
+        }
+
+        /* Анимации */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .animate-fadeIn {
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .animate-slideIn {
+            animation: slideInLeft 0.8s ease-out;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 36px;
+            }
+            
+            .hero p {
+                font-size: 18px;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .auth-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero h1 {
+                font-size: 28px;
+            }
+            
+            .hero p {
+                font-size: 16px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 15px;
+            }
         }
     </style>
 </head>
 <body>
     <header>
         <div class="header-content">
-            <div class="logo">FastAPI Messenger</div>
+            <div class="logo">Neon Messenger</div>
             <div class="auth-buttons">
-                <a href="/login" class="btn">Вход</a>
-                <a href="/register" class="btn">Регистрация</a>
+                <a href="/login" class="btn btn-outline">Вход</a>
+                <a href="/register" class="btn btn-primary">Регистрация</a>
             </div>
         </div>
     </header>
 
     <main>
         <section class="hero">
-            <h1>Современный мессенджер для общения</h1>
-            <p>Быстрые сообщения, аудиозвонки и удобный интерфейс. Общайтесь с друзьями и коллегами без ограничений.</p>
+            <h1 class="animate-fadeIn">Современный мессенджер для общения</h1>
+            <p class="animate-fadeIn">Быстрые сообщения, аудиозвонки и удобный интерфейс. Общайтесь с друзьями и коллегами без ограничений.</p>
             <div class="cta-buttons">
-                <a href="/register" class="cta-btn primary">Начать бесплатно</a>
-                <a href="/login" class="cta-btn secondary">Уже есть аккаунт</a>
+                <a href="/register" class="cta-btn cta-primary animate-slideIn">Начать бесплатно</a>
+                <a href="/login" class="cta-btn cta-secondary animate-slideIn">Уже есть аккаунт</a>
             </div>
         </section>
 
         <section class="features">
-            <div class="feature-card">
-                <div class="feature-icon">💬</div>
-                <h3 class="feature-title">Мгновенные сообщения</h3>
-                <p>Отправляйте текстовые сообщения в реальном времени вашим контактам.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📞</div>
-                <h3 class="feature-title">Аудиозвонки</h3>
-                <p>Высококачественные аудиозвонки с друзьями и коллегами.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔒</div>
-                <h3 class="feature-title">Безопасность</h3>
-                <p>Защищенные соединения и шифрование данных для вашей конфиденциальности.</p>
+            <div class="features-grid">
+                <div class="feature-card animate-fadeIn">
+                    <div class="feature-icon">💬</div>
+                    <h3 class="feature-title">Мгновенные сообщения</h3>
+                    <p class="feature-description">Отправляйте текстовые сообщения в реальном времени вашим контактам.</p>
+                </div>
+                <div class="feature-card animate-fadeIn" style="animation-delay: 0.2s;">
+                    <div class="feature-icon">📞</div>
+                    <h3 class="feature-title">Аудиозвонки</h3>
+                    <p class="feature-description">Высококачественные аудиозвонки с друзьями и коллегами.</p>
+                </div>
+                <div class="feature-card animate-fadeIn" style="animation-delay: 0.4s;">
+                    <div class="feature-icon">🔒</div>
+                    <h3 class="feature-title">Безопасность</h3>
+                    <p class="feature-description">Защищенные соединения и шифрование данных для вашей конфиденциальности.</p>
+                </div>
             </div>
         </section>
     </main>
 
     <footer>
-        <p>© 2023 FastAPI Messenger. Все права защищены.</p>
+        <p>© 2024 Neon Messenger. Все права защищены.</p>
     </footer>
+
+    <script>
+        // Добавляем анимации при скролле
+        document.addEventListener('DOMContentLoaded', function() {
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, observerOptions);
+
+            // Наблюдаем за карточками фич
+            document.querySelectorAll('.feature-card').forEach(card => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(40px)';
+                card.style.transition = 'all 0.8s ease-out';
+                observer.observe(card);
+            });
+        });
+    </script>
 </body>
 </html>
