@@ -1,218 +1,270 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Вход</title>
+    <title>Вход - Neon Messenger</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f5f8fa;
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --dark-bg: #0f0f1a;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --error-color: #ff6b6b;
+        }
+
+        * {
+            box-sizing: border-box;
             margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientFloat 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientFloat {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-20px) scale(1.02); }
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 440px;
             padding: 20px;
+            animation: fadeInUp 0.8s ease-out;
         }
-        .login-container {
-            max-width: 400px;
-            margin: 50px auto;
-            padding: 30px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        h2 {
+
+        .auth-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 40px 35px;
+            box-shadow: 
+                0 25px 50px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-header {
             text-align: center;
-            color: #1da1f2;
-            margin-bottom: 25px;
+            margin-bottom: 35px;
         }
-        .form-group {
+
+        .auth-logo {
+            font-size: 32px;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 15px;
         }
-        input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #e6ecf0;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 14px;
+
+        .auth-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
         }
-        button {
+
+        .auth-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            animation: slideInRight 0.6s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-input {
             width: 100%;
-            padding: 12px;
-            background: #1da1f2;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            background: var(--primary-gradient);
             color: white;
             border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            border-radius: 12px;
             font-size: 16px;
-            font-weight: bold;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            margin-top: 10px;
         }
-        button:hover {
-            background: #1991db;
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
         }
-        .error {
-            color: #e0245e;
+
+        .auth-footer {
             text-align: center;
-            margin: 10px 0;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--card-border);
+        }
+
+        .auth-link {
+            color: var(--text-secondary);
             font-size: 14px;
         }
-        .register-link {
-            text-align: center;
-            margin-top: 20px;
-            color: #657786;
-            font-size: 14px;
-        }
-        a {
-            color: #1da1f2;
+
+        .auth-link a {
+            color: #667eea;
             text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #657786;
+
+        .auth-link a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+
+        .error-message {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid var(--error-color);
+            color: var(--error-color);
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
             font-size: 14px;
+            backdrop-filter: blur(10px);
+            animation: shake 0.5s ease-in-out;
         }
-        :root {
-        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --dark-bg: #0f0f1a;
-        --card-bg: rgba(255, 255, 255, 0.08);
-        --card-border: rgba(255, 255, 255, 0.12);
-        --text-primary: #ffffff;
-    }
 
-    body {
-        background: var(--dark-bg);
-        color: var(--text-primary);
-        font-family: 'Inter', sans-serif;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-    }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
 
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background:
-            radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
-        z-index: -1;
-        animation: float 6s ease-in-out infinite;
-    }
-
-    .auth-container {
-        width: 100%;
-        max-width: 400px;
-        padding: 20px;
-    }
-
-    .auth-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--card-border);
-        border-radius: 20px;
-        padding: 40px 30px;
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-        animation: fadeIn 0.8s ease-out;
-    }
-
-    .auth-header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-
-    .auth-title {
-        font-size: 28px;
-        font-weight: 700;
-        background: var(--primary-gradient);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 10px;
-    }
-
-    .auth-subtitle {
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 14px;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 8px;
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    .form-input {
-        width: 100%;
-        padding: 15px 20px;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid var(--card-border);
-        border-radius: 12px;
-        color: var(--text-primary);
-        font-size: 14px;
-        backdrop-filter: blur(10px);
-        transition: all 0.3s ease;
-    }
-
-    .form-input:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-    }
-
-    .btn-primary {
-        width: 100%;
-        padding: 15px;
-        background: var(--primary-gradient);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
-    }
+        @media (max-width: 480px) {
+            .auth-container {
+                padding: 15px;
+            }
+            
+            .auth-card {
+                padding: 30px 25px;
+            }
+            
+            .auth-title {
+                font-size: 22px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <h2>Вход в аккаунт</h2>
-
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-
-        <form method="post" action="/login">
-            <div class="form-group">
-                <label for="username">Юзернейм</label>
-                <input type="text" id="username" name="username" placeholder="#username" required>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">Neon Messenger</div>
+                <h1 class="auth-title">Добро пожаловать обратно</h1>
+                <p class="auth-subtitle">Войдите в свой аккаунт</p>
             </div>
 
-            <div class="form-group">
-                <label for="password">Пароль</label>
-                <input type="password" id="password" name="password" placeholder="Ваш пароль" required>
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
             </div>
+            {% endif %}
 
-            <button type="submit">Войти</button>
-        </form>
+            <form method="post" action="/login">
+                <div class="form-group">
+                    <label for="username" class="form-label">Юзернейм</label>
+                    <input type="text" id="username" name="username" class="form-input" placeholder="#username" required>
+                </div>
 
-        <div class="register-link">
-            Нет аккаунта? <a href="/register">Зарегистрируйтесь</a>
+                <div class="form-group">
+                    <label for="password" class="form-label">Пароль</label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="Ваш пароль" required>
+                </div>
+
+                <button type="submit" class="btn-primary">Войти в аккаунт</button>
+            </form>
+
+            <div class="auth-footer">
+                <p class="auth-link">Нет аккаунта? <a href="/register">Зарегистрируйтесь</a></p>
+            </div>
         </div>
     </div>
 </body>
