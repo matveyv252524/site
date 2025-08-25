@@ -1,4 +1,3 @@
-# main.py (обновленная версия)
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException
@@ -36,11 +35,6 @@ DB_CONFIG = {
     "sslmode": "require"
 }
 
-# Альтернативные юзернеймы для аккаунтов
-ALTERNATE_USERNAMES = {
-    "#admin": ["#creator"]
-}
-
 
 # ======================
 # КЛАССЫ И ФУНКЦИИ
@@ -55,43 +49,14 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections[user_id] = websocket
-
-        # Отправляем непрочитанные сообщения при подключении
-        unread_messages = self.get_unread_messages(user_id)
-        for message in unread_messages:
-            await self.send_json(user_id, message)
-
         logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
 
-    def get_unread_messages(self, user_id: str) -> List[dict]:
-        """Получает непрочитанные сообщения из базы"""
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute('''
-                   SELECT m.sender_id, u.name, m.message, m.timestamp
-                   FROM messages m
-                   JOIN users u ON m.sender_id = u.id
-                   WHERE m.receiver_id = %s AND m.is_read = FALSE
-                   ORDER BY m.timestamp
-               ''', (user_id,))
+        # Send pending notifications
+        if user_id in self.user_notifications:
+            for notification in self.user_notifications[user_id]:
+                await self.send_json(user_id, notification)
+            self.user_notifications[user_id] = []
 
-            messages = []
-            for row in cursor.fetchall():
-                messages.append({
-                    "type": "message",
-                    "from": str(row[0]),
-                    "sender_name": row[1],
-                    "message": row[2],
-                    "timestamp": row[3].isoformat(),
-                    "was_queued": True
-                })
-            return messages
-        except Exception as e:
-            logger.error(f"Error getting unread messages: {str(e)}")
-            return []
-        finally:
-            conn.close()
     async def send_json(self, receiver_id: str, message: dict) -> bool:
         if receiver_id in self.active_connections:
             try:
@@ -148,14 +113,6 @@ def init_db():
             )
             """,
             """
-            CREATE TABLE IF NOT EXISTS alternate_usernames (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                username TEXT UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-            """
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id),
@@ -183,21 +140,6 @@ def init_db():
                 logger.error(f"Error creating table: {str(e)}")
                 raise
 
-        # Добавляем альтернативные юзернеймы для администратора
-        cursor.execute("SELECT id FROM users WHERE username = '#admin'")
-        admin = cursor.fetchone()
-
-        if admin:
-            admin_id = admin[0]
-            for alt_username in ALTERNATE_USERNAMES.get("#admin", []):
-                try:
-                    cursor.execute(
-                        "INSERT INTO alternate_usernames (user_id, username) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                        (admin_id, alt_username)
-                    )
-                except Exception as e:
-                    logger.error(f"Error adding alternate username {alt_username}: {str(e)}")
-
         conn.commit()
         logger.info("All tables initialized successfully")
     except Exception as e:
@@ -213,43 +155,25 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def get_user_by_username(username: str) -> Optional[tuple]:
-    """Получает пользователя по юзернейму (основному или альтернативному)"""
+def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Аутентифицирует пользователя"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-
-        # Сначала проверяем основной юзернейм
         cursor.execute(
             'SELECT id, username, name, password FROM users WHERE username = %s',
             (username,)
         )
         user = cursor.fetchone()
 
-        if user:
-            return user
-
-        # Если не найден, проверяем альтернативные юзернеймы
-        cursor.execute(
-            'SELECT u.id, u.username, u.name, u.password FROM users u '
-            'JOIN alternate_usernames a ON u.id = a.user_id WHERE a.username = %s',
-            (username,)
-        )
-        return cursor.fetchone()
+        if user and user[3] == hash_password(password):
+            return {"id": user[0], "username": user[1], "name": user[2]}
+        return None
     except Exception as e:
-        logger.error(f"Error getting user by username: {str(e)}")
+        logger.error(f"Error authenticating user: {str(e)}")
         return None
     finally:
         conn.close()
-
-
-def authenticate_user(username: str, password: str) -> Optional[dict]:
-    """Аутентифицирует пользователя"""
-    user = get_user_by_username(username)
-
-    if user and user[3] == hash_password(password):
-        return {"id": user[0], "username": user[1], "name": user[2]}
-    return None
 
 
 def register_user(username: str, password: str, name: str, description: str = "") -> Optional[dict]:
@@ -285,20 +209,15 @@ def get_user_profile(user_id: int) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT u.username, u.name, u.description,
-                   ARRAY_AGG(a.username) AS alternate_usernames
-            FROM users u
-            LEFT JOIN alternate_usernames a ON u.id = a.user_id
-            WHERE u.id = %s
-            GROUP BY u.id, u.username, u.name, u.description
+            SELECT username, name, description 
+            FROM users WHERE id = %s
         ''', (user_id,))
         result = cursor.fetchone()
         if result:
             return {
                 "username": result[0],
                 "name": result[1],
-                "description": result[2],
-                "alternate_usernames": [u for u in (result[3] or []) if u]  # Фильтруем NULL значения
+                "description": result[2]
             }
         return None
     except Exception as e:
@@ -385,19 +304,6 @@ def get_username(user_id: str) -> str:
     finally:
         conn.close()
 
-def get_user_name(user_id: str) -> str:
-    """Получает имя пользователя по ID"""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM users WHERE id = %s', (int(user_id),))
-        result = cursor.fetchone()
-        return result[0] if result else "Unknown"
-    except Exception as e:
-        logger.error(f"Error getting user name: {str(e)}")
-        return "Unknown"
-    finally:
-        conn.close()
 
 # ======================
 # LIFESPAN HANDLER
@@ -429,20 +335,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
-# ======================
-# CORS НАСТРОЙКИ
-# ======================
-
-from fastapi.middleware.cors import CORSMiddleware
-
-# Добавьте CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Разрешаем все origins (для разработки)
-    allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все методы
-    allow_headers=["*"],  # Разрешаем все заголовки
-)
 
 # ======================
 # МАРШРУТЫ ПРИЛОЖЕНИЯ
@@ -511,6 +403,8 @@ async def register(
         )
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
+
+    # Исправленная часть - кодируем имя пользователя в utf-8 перед установкой cookie
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
     response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
@@ -639,14 +533,8 @@ async def add_contact(request: Request):
             if contact_username == current_username:
                 return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-            # Поиск контакта (основной или альтернативный юзернейм)
-            cursor.execute('''
-                SELECT u.id, u.username, u.name 
-                FROM users u
-                LEFT JOIN alternate_usernames a ON u.id = a.user_id
-                WHERE LOWER(u.username) = %s OR LOWER(a.username) = %s
-                LIMIT 1
-            ''', (contact_username, contact_username))
+            # Поиск контакта
+            cursor.execute('SELECT id, username, name FROM users WHERE LOWER(username) = %s', (contact_username,))
             contact = cursor.fetchone()
 
             if not contact:
@@ -732,24 +620,6 @@ async def logout():
     return response
 
 
-@app.get("/call/{call_id}", response_class=HTMLResponse)
-async def call_page(request: Request, call_id: str):
-    user_id = request.cookies.get("user_id")
-    if not user_id:
-        return RedirectResponse(url="/login")
-
-    # Проверяем что пользователь участник звонка
-    parts = call_id.split('_')
-    if user_id not in [parts[0], parts[1]]:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    return templates.TemplateResponse("call.html", {
-        "request": request,
-        "call_id": call_id,
-        "user_id": user_id
-    })
-
-
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
@@ -758,7 +628,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             data = await websocket.receive_json()
             logger.info(f"Received from {user_id}: {data}")
 
-            # Обработка обычных сообщений
             if data["type"] == "message":
                 receiver_id = data["to"]
                 message_text = data["message"]
@@ -766,192 +635,110 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 # Сохраняем сообщение в базе данных
                 save_message(int(user_id), int(receiver_id), message_text)
 
-                # Получаем имя отправителя для уведомления
-                sender_name = get_user_name(user_id)
+                # Проверяем взаимность контакта
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT 1 FROM contacts 
+                        WHERE user_id = %s AND contact_id = %s
+                    ''', (receiver_id, user_id))
+                    is_mutual = cursor.fetchone() is not None
+                finally:
+                    conn.close()
 
                 # Отправляем сообщение получателю
-                success = await manager.send_json(receiver_id, {
+                await manager.send_json(receiver_id, {
                     "type": "message",
                     "from": user_id,
                     "message": message_text,
-                    "timestamp": datetime.now().isoformat(),
-                    "sender_name": sender_name,
-                    "is_read": False
+                    "timestamp": str(datetime.now()),
+                    "is_mutual": is_mutual
                 })
 
-                if not success:
-                    # Если получатель offline, сохраняем как непрочитанное
-                    logger.info(f"User {receiver_id} is offline, message queued")
+                # Если контакт не взаимный, отправляем уведомление
+                if not is_mutual:
+                    await manager.send_json(receiver_id, {
+                        "type": "notification",
+                        "from": user_id,
+                        "message": f"New message from #{get_username(user_id)}: {message_text}",
+                        "timestamp": str(datetime.now())
+                    })
 
-                    # Помечаем сообщение как непрочитанное в базе
-                    conn = get_db_connection()
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            UPDATE messages SET is_read = FALSE 
-                            WHERE sender_id = %s AND receiver_id = %s 
-                            AND message = %s AND timestamp = (
-                                SELECT MAX(timestamp) FROM messages 
-                                WHERE sender_id = %s AND receiver_id = %s AND message = %s
-                            )
-                        ''', (user_id, receiver_id, message_text, user_id, receiver_id, message_text))
-                        conn.commit()
-                    except Exception as e:
-                        logger.error(f"Error updating message status: {str(e)}")
-                    finally:
-                        conn.close()
-
-            # Инициализация звонка
             elif data["type"] == "call_request":
-                call_id = f"{user_id}_{data['to']}_{uuid.uuid4().hex[:8]}"
+                call_id = f"{user_id}_{data['to']}_{str(uuid.uuid4())[:8]}"
                 manager.pending_calls[call_id] = {
                     "from": user_id,
                     "to": data["to"],
-                    "status": "waiting",
-                    "created_at": datetime.now()
+                    "status": "waiting"
                 }
-
                 await manager.send_json(data["to"], {
                     "type": "call_incoming",
                     "from": user_id,
                     "call_id": call_id,
                     "is_audio_only": True
                 })
-
                 await websocket.send_json({
                     "type": "call_waiting",
                     "call_id": call_id,
                     "to": data["to"]
                 })
 
-            # Принятие звонка
             elif data["type"] == "call_accept":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    call_data = manager.pending_calls.pop(call_id)
-
-                    # Отправляем подтверждение инициатору
-                    await manager.send_json(call_data["from"], {
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
                         "type": "call_accepted",
                         "call_id": call_id,
-                        "by": user_id,
-                        "target_url": f"/call/{call_id}"
+                        "by": user_id
                     })
+                    del manager.pending_calls[call_id]
 
-                    # Отправляем подтверждение принимающему
-                    await manager.send_json(user_id, {
-                        "type": "call_redirect",
-                        "call_id": call_id,
-                        "target_url": f"/call/{call_id}"
-                    })
-
-            # Отклонение звонка
             elif data["type"] == "call_reject":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    call_data = manager.pending_calls.pop(call_id)
-                    await manager.send_json(call_data["from"], {
+                    await manager.send_json(manager.pending_calls[call_id]["from"], {
                         "type": "call_rejected",
                         "call_id": call_id,
-                        "by": user_id,
-                        "reason": "Call declined"
+                        "by": user_id
                     })
+                    del manager.pending_calls[call_id]
 
-            # WebRTC сигнализация
             elif data["type"] == "webrtc_offer":
-                call_id = data["call_id"]
-                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
-                    await manager.send_json(data["to"], {
-                        "type": "webrtc_offer",
-                        "from": user_id,
-                        "call_id": call_id,
-                        "offer": data["offer"],
-                        "is_audio_only": data.get("is_audio_only", True)
-                    })
+                await manager.send_json(data["to"], {
+                    "type": "webrtc_offer",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "offer": data["offer"],
+                    "is_audio_only": True
+                })
 
             elif data["type"] == "webrtc_answer":
-                call_id = data["call_id"]
-                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
-                    await manager.send_json(data["to"], {
-                        "type": "webrtc_answer",
-                        "from": user_id,
-                        "call_id": call_id,
-                        "answer": data["answer"]
-                    })
+                await manager.send_json(data["to"], {
+                    "type": "webrtc_answer",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "answer": data["answer"]
+                })
 
             elif data["type"] == "ice_candidate":
-                call_id = data["call_id"]
-                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
-                    await manager.send_json(data["to"], {
-                        "type": "ice_candidate",
-                        "from": user_id,
-                        "call_id": call_id,
-                        "candidate": data["candidate"]
-                    })
-
-            # Завершение звонка
-            elif data["type"] == "call_end":
-                call_id = data["call_id"]
-                other_user = call_id.split('_')[0] if call_id.split('_')[1] == user_id else call_id.split('_')[1]
-                await manager.send_json(other_user, {
-                    "type": "call_ended",
-                    "call_id": call_id,
-                    "by": user_id
+                await manager.send_json(data["to"], {
+                    "type": "ice_candidate",
+                    "from": user_id,
+                    "call_id": data["call_id"],
+                    "candidate": data["candidate"]
                 })
-
-                if call_id in manager.pending_calls:
-                    manager.pending_calls.pop(call_id)
-
-            # Отметка сообщений как прочитанных
-            elif data["type"] == "mark_read":
-                contact_id = data["contact_id"]
-                # Помечаем все сообщения от этого контакта как прочитанные
-                conn = get_db_connection()
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        UPDATE messages SET is_read = TRUE 
-                        WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE
-                    ''', (contact_id, user_id))
-                    conn.commit()
-                    logger.info(f"Marked messages from {contact_id} as read for user {user_id}")
-                except Exception as e:
-                    logger.error(f"Error marking messages as read: {str(e)}")
-                finally:
-                    conn.close()
 
     except WebSocketDisconnect:
-        logger.info(f"User {user_id} disconnected")
         manager.disconnect(user_id)
-
-        # Отменяем все звонки пользователя
-        for call_id, call_data in list(manager.pending_calls.items()):
-            if call_data["from"] == user_id:
-                await manager.send_json(call_data["to"], {
-                    "type": "call_rejected",
-                    "call_id": call_id,
-                    "by": user_id,
-                    "reason": "Caller disconnected"
-                })
-                manager.pending_calls.pop(call_id)
-
-            elif call_data["to"] == user_id:
-                await manager.send_json(call_data["from"], {
-                    "type": "call_rejected",
-                    "call_id": call_id,
-                    "by": user_id,
-                    "reason": "Recipient disconnected"
-                })
-                manager.pending_calls.pop(call_id)
-
+        logger.info(f"User {user_id} disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error for {user_id}: {str(e)}")
+        logger.error(f"Error with {user_id}: {str(e)}")
+        manager.disconnect(user_id)
         try:
             await websocket.close()
         except:
             pass
-        finally:
-            manager.disconnect(user_id)
 
 
 # ======================
