@@ -100,7 +100,7 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Создание таблиц с правильным синтаксисом
+        # Создание таблиц
         tables = [
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -118,7 +118,6 @@ def init_db():
                 user_id INTEGER NOT NULL REFERENCES users(id),
                 contact_id INTEGER NOT NULL REFERENCES users(id),
                 UNIQUE(user_id, contact_id)
-            )
             """,
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -135,7 +134,6 @@ def init_db():
         for table_ddl in tables:
             try:
                 cursor.execute(table_ddl)
-                logger.info(f"Successfully executed: {table_ddl.split()[5]}")  # Логируем имя таблицы
             except Exception as e:
                 logger.error(f"Error creating table: {str(e)}")
                 raise
@@ -362,7 +360,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
-    response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
+    response.set_cookie(key="name", value=user['name'], httponly=True)
     return response
 
 
@@ -403,12 +401,9 @@ async def register(
         )
 
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
-
-    # Исправленная часть - кодируем имя пользователя в utf-8 перед установкой cookie
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
-    response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
-
+    response.set_cookie(key="name", value=user['name'], httponly=True)
     return response
 
 
@@ -448,7 +443,7 @@ async def update_profile(
         conn.commit()
 
         response = RedirectResponse(url="/profile", status_code=303)
-        response.set_cookie(key="name", value=name.encode('utf-8').decode('latin-1'), httponly=True)
+        response.set_cookie(key="name", value=name, httponly=True)
         return response
     except Exception as e:
         logger.error(f"Error updating profile: {str(e)}")
