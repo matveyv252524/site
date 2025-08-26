@@ -38,7 +38,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background:
+            background: 
                 radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
                 radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
             z-index: -1;
@@ -59,7 +59,6 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-            animation: slideInLeft 0.6s ease-out;
         }
 
         .contacts-header {
@@ -238,7 +237,6 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-            animation: fadeIn 0.6s ease-out;
         }
 
         .chat-header {
@@ -485,7 +483,7 @@
         <div class="contacts-list" id="contactsList">
             {% for contact in contacts %}
             <div class="contact-item" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
-                <div class="contact-avatar">{{ contact.name[0]|upper }}</div>
+                <div class="contact-avatar avatar-gradient-{{ loop.index % 4 + 1 }}">{{ contact.name[0]|upper }}</div>
                 <div class="contact-info">
                     <div class="contact-name">{{ contact.name }}</div>
                     <div class="contact-username">{{ contact.username }}</div>
@@ -537,7 +535,7 @@
         const userId = "{{ user_id }}";
         const username = "{{ username }}";
         const name = "{{ name }}";
-        let ws;
+        let ws = null;
         let currentContact = null;
         let currentContactName = null;
         let currentCallId = null;
@@ -558,217 +556,94 @@
         }
 
         function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
-
-    ws.onopen = () => {
-        updateStatus("Подключено");
-        reconnectAttempts = 0;
-        console.log("WebSocket connected");
-
-        // Загружаем сообщения если есть активный контакт
-        if (currentContact) {
-            loadMessages(currentContact);
-
-            // Отмечаем сообщения как прочитанные
-            ws.send(JSON.stringify({
-                type: "mark_read",
-                contact_id: currentContact
-            }));
-        }
-
-        // Запрашиваем разрешение на уведомления
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    console.log("Notification permission granted");
+            try {
+                // Закрываем предыдущее соединение если есть
+                if (ws) {
+                    ws.close();
                 }
-            });
+
+                const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                const wsUrl = `${protocol}${window.location.host}/ws/${userId}`;
+                
+                console.log("Подключение к:", wsUrl);
+                updateStatus("Подключение...");
+                
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function() {
+                    console.log("✅ WebSocket подключен");
+                    updateStatus("Подключено");
+                    reconnectAttempts = 0;
+                };
+
+                ws.onclose = function() {
+                    console.log("❌ WebSocket отключен");
+                    updateStatus("Отключено");
+                    
+                    // Пытаемся переподключиться
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        const delay = Math.min(3000, reconnectAttempts * 1000 + 1000);
+                        console.log(`Переподключение через ${delay}ms...`);
+                        setTimeout(connectWebSocket, delay);
+                        reconnectAttempts++;
+                    }
+                };
+
+                ws.onerror = function(error) {
+                    console.error("Ошибка WebSocket:", error);
+                    updateStatus("Ошибка");
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log("Получено:", data);
+
+                        if (data.type === "message") {
+                            // Проверяем, активен ли чат с отправителем
+                            const isActiveChat = currentContact === data.from;
+                            
+                            if (isActiveChat) {
+                                // Если чат активен, сразу отображаем сообщение
+                                displayMessage(data.from, data.message, true, data.timestamp);
+                            } else {
+                                // Если чат не активен, добавляем уведомление
+                                incrementUnreadCount(data.from);
+                            }
+                        }
+                        else if (data.type === "call_incoming") {
+                            showIncomingCall(data.from, data.call_id);
+                        }
+                        else if (data.type === "call_waiting") {
+                            showWaitingNotification(data.call_id);
+                        }
+                        else if (data.type === "call_accepted") {
+                            handleCallAccepted(data.call_id);
+                        }
+                        else if (data.type === "call_rejected") {
+                            handleCallRejected(data.by);
+                        }
+                        else if (data.type === "notification") {
+                            showNotification(data.message);
+                        }
+
+                    } catch (error) {
+                        console.error("Ошибка парсинга сообщения:", error);
+                    }
+                };
+
+            } catch (error) {
+                console.error("Ошибка создания WebSocket:", error);
+                updateStatus("Ошибка подключения");
+            }
         }
-    };
-
-    ws.onclose = () => {
-        updateStatus("Отключено");
-        console.log("WebSocket disconnected");
-
-        if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
-            console.log(`Reconnecting in ${delay}ms...`);
-            setTimeout(connectWebSocket, delay);
-            reconnectAttempts++;
-        } else {
-            console.log("Max reconnection attempts reached");
-            showNotification("Соединение потеряно. Перезагрузите страницу.");
-        }
-    };
-
-    ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        updateStatus("Ошибка");
-    };
-
-    ws.onmessage = (event) => {
-        console.log("WebSocket message received:", event.data);
-        try {
-            const data = JSON.parse(event.data);
-
-            if (data.type === "message") {
-                // Проверяем, активен ли чат с отправителем
-                const isActiveChat = currentContact === data.from;
-
-                if (isActiveChat) {
-                    // Если чат активен, сразу отображаем сообщение
-                    displayMessage(data.from, data.message, true, data.timestamp, data.sender_name);
-
-                    // Прокручиваем к новому сообщению
-                    setTimeout(() => {
-                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                    }, 100);
-
-                    // Отмечаем сообщение как прочитанное на сервере
-                    ws.send(JSON.stringify({
-                        type: "mark_read",
-                        contact_id: data.from
-                    }));
-                } else {
-                    // Если чат не активен, добавляем уведомление
-                    incrementUnreadCount(data.from);
-
-                    // Показываем уведомление
-                    showNotification(`Новое сообщение от ${data.sender_name}: ${data.message}`);
-
-                    // Мигаем вкладкой браузера
-                    flashTab(`💬 ${data.sender_name}`);
-                }
-            }
-            else if (data.type === "call_incoming") {
-                showIncomingCall(data.from, data.call_id);
-            }
-            else if (data.type === "call_waiting") {
-                showWaitingNotification(data.call_id);
-            }
-            else if (data.type === "call_accepted") {
-                handleCallAccepted(data.call_id);
-            }
-            else if (data.type === "call_rejected") {
-                handleCallRejected(data.by, data.reason);
-            }
-            else if (data.type === "call_ended") {
-                handleCallEnded(data.by);
-            }
-            else if (data.type === "notification") {
-                showNotification(data.message);
-            }
-
-        } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
-        }
-    };
-}
-
-// Добавьте эти вспомогательные функции:
-
-function showNotification(message) {
-    // Браузерные уведомления
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Talkify', {
-            body: message,
-            icon: '/favicon.ico',
-            tag: 'talkify-message'
-        });
-    }
-
-    // Встроенные уведомления в интерфейсе
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--primary-gradient);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        z-index: 10000;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
-        animation: slideInRight 0.3s ease-out;
-        max-width: 300px;
-        word-wrap: break-word;
-    `;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.style.animation = 'fadeOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-function flashTab(title) {
-    const originalTitle = document.title;
-    let isFlashing = false;
-    let flashCount = 0;
-    const maxFlashes = 5;
-
-    const flash = () => {
-        if (flashCount >= maxFlashes) {
-            document.title = originalTitle;
-            return;
-        }
-
-        isFlashing = !isFlashing;
-        document.title = isFlashing ? title : originalTitle;
-        flashCount++;
-
-        setTimeout(flash, 1000);
-    };
-
-    flash();
-}
-
-// Добавьте стили для анимаций
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-
-    @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
-    }
-
-    @keyframes pulseUnread {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-    }
-`;
-document.head.appendChild(style);
-
-// Функция для отметки сообщений как прочитанных при открытии чата
-function markMessagesAsRead(contactId) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: "mark_read",
-            contact_id: contactId
-        }));
-    }
-}
-
-// Обновите функцию selectContact для отметки сообщений как прочитанных
-function selectContact(contactId, contactUsername, contactName) {
-    // ... существующий код ...
-
-    // Отмечаем сообщения как прочитанные
-    markMessagesAsRead(contactId);
-    resetUnreadCount(contactId);
 
         function incrementUnreadCount(contactId) {
             if (!unreadMessages[contactId]) {
                 unreadMessages[contactId] = 0;
             }
             unreadMessages[contactId]++;
-
+            
             const unreadBadge = document.getElementById(`unread-${contactId}`);
             if (unreadBadge) {
                 unreadBadge.textContent = unreadMessages[contactId];
@@ -832,7 +707,7 @@ function selectContact(contactId, contactUsername, contactName) {
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 })
                 .catch(error => {
-                    console.error("Error loading messages:", error);
+                    console.error("Ошибка загрузки сообщений:", error);
                 });
         }
 
@@ -865,7 +740,7 @@ function selectContact(contactId, contactUsername, contactName) {
             if (!message || !currentContact) return;
 
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Соединение потеряно. Пытаемся переподключиться...");
+                alert("Нет соединения. Сообщение не отправлено.");
                 connectWebSocket();
                 return;
             }
@@ -881,41 +756,32 @@ function selectContact(contactId, contactUsername, contactName) {
                 input.value = '';
                 input.style.height = '40px';
             } catch (e) {
-                console.error("Error sending message:", e);
+                console.error("Ошибка отправки сообщения:", e);
                 alert("Не удалось отправить сообщение");
             }
         }
 
         function showIncomingCall(from, callId) {
-        document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
-        document.getElementById('incomingCallNotification').style.display = 'block';
+            document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
+            document.getElementById('incomingCallNotification').style.display = 'block';
 
-        // Настройка обработчиков кнопок
-        document.getElementById('acceptCallBtn').onclick = async () => {
-            document.getElementById('incomingCallNotification').style.display = 'none';
-            try {
-                // Отправляем подтверждение принятия звонка
+            document.getElementById('acceptCallBtn').onclick = () => {
+                document.getElementById('incomingCallNotification').style.display = 'none';
                 ws.send(JSON.stringify({
                     type: "call_accept",
                     call_id: callId
                 }));
-
-                // Перенаправляем на страницу звонка
                 window.location.href = `/call/${callId}`;
-            } catch (error) {
-                console.error("Ошибка при принятии звонка:", error);
-                alert("Произошла ошибка при принятии звонка");
-            }
-        };
+            };
 
-        document.getElementById('rejectCallBtn').onclick = () => {
-            document.getElementById('incomingCallNotification').style.display = 'none';
-            ws.send(JSON.stringify({
-                type: "call_reject",
-                call_id: callId
-            }));
-        };
-    }
+            document.getElementById('rejectCallBtn').onclick = () => {
+                document.getElementById('incomingCallNotification').style.display = 'none';
+                ws.send(JSON.stringify({
+                    type: "call_reject",
+                    call_id: callId
+                }));
+            };
+        }
 
         function showWaitingNotification(callId) {
             currentCallId = callId;
@@ -924,7 +790,7 @@ function selectContact(contactId, contactUsername, contactName) {
             document.getElementById('cancelCallBtn').onclick = cancelCall;
 
             callTimeout = setTimeout(() => {
-                alert("Звонок не был принят. Таймаут.");
+                alert("Звонок не был принят.");
                 hideWaitingNotification();
             }, 30000);
         }
@@ -941,7 +807,7 @@ function selectContact(contactId, contactUsername, contactName) {
             }
 
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Соединение потеряно. Пытаемся переподключиться...");
+                alert("Нет соединения");
                 connectWebSocket();
                 return;
             }
@@ -1003,40 +869,27 @@ function selectContact(contactId, contactUsername, contactName) {
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(`Контакт ${result.contact_name} (@${result.contact_username}) успешно добавлен`);
+                    alert(`Контакт ${result.contact_name} добавлен`);
                     // Обновляем список контактов
-                    const contactsList = document.getElementById('contactsList');
-                    const newContact = document.createElement('div');
-                    newContact.className = 'contact-item';
-                    newContact.setAttribute('data-contact-id', result.contact_id);
-                    newContact.onclick = () => selectContact(result.contact_id, result.contact_username, result.contact_name);
-                    newContact.innerHTML = `
-                        <div class="contact-avatar">${result.contact_name[0].toUpperCase()}</div>
-                        <div class="contact-info">
-                            <div class="contact-name">${result.contact_name}</div>
-                            <div class="contact-username">${result.contact_username}</div>
-                        </div>
-                        <div class="unread-badge" id="unread-${result.contact_id}" style="display: none;"></div>
-                    `;
-                    contactsList.appendChild(newContact);
-                    document.getElementById('newContactInput').value = '';
+                    location.reload();
                 } else {
                     alert(result.message);
                 }
             } catch (error) {
                 console.error('Ошибка при добавлении контакта:', error);
-                alert('Произошла ошибка при добавлении контакта');
+                alert('Произошла ошибка');
             }
         }
 
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
+            console.log("Инициализация чата...");
             connectWebSocket();
 
             // Обработчик отправки сообщения
             document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
 
-            // Обработчик нажатия Enter в поле ввода
+            // Обработчик нажатия Enter
             document.getElementById('messageInput').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1055,14 +908,6 @@ function selectContact(contactId, contactUsername, contactName) {
 
             // Обработчик кнопки добавления контакта
             document.getElementById('addContactBtn').addEventListener('click', addContact);
-
-            // Обработчик нажатия Enter в поле добавления контакта
-            document.getElementById('newContactInput').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addContact();
-                }
-            });
 
             // Поиск контактов
             document.getElementById('searchContacts').addEventListener('input', function() {
