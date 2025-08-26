@@ -279,7 +279,13 @@
                         <div class="stat-label">Сообщения</div>
                     </div>
                     <div class="stat-card">
-                       <div class="stat-number">{{ stats.joined.strftime('%Y-%m-%d') if stats.joined is datetime else stats.joined }}</div>
+                        <div class="stat-number">
+                            {% if stats.joined is string %}
+                                {{ stats.joined }}
+                            {% else %}
+                                {{ stats.joined.strftime('%Y-%m-%d') }}
+                            {% endif %}
+                        </div>
                         <div class="stat-label">Присоединился</div>
                     </div>
                 </div>
