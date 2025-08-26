@@ -1,3 +1,4 @@
+# main.py (обновленная версия)
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException
@@ -33,6 +34,11 @@ DB_CONFIG = {
     "password": "bQH965QR9xrBKCUpUdUv80K7IRjGvEtt",
     "port": "5432",
     "sslmode": "require"
+}
+
+# Альтернативные юзернеймы для аккаунтов
+ALTERNATE_USERNAMES = {
+    "#admin": ["#creator"]
 }
 
 
@@ -113,6 +119,14 @@ def init_db():
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS alternate_usernames (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                username TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id),
@@ -140,6 +154,21 @@ def init_db():
                 logger.error(f"Error creating table: {str(e)}")
                 raise
 
+        # Добавляем альтернативные юзернеймы для администратора
+        cursor.execute("SELECT id FROM users WHERE username = '#admin'")
+        admin = cursor.fetchone()
+
+        if admin:
+            admin_id = admin[0]
+            for alt_username in ALTERNATE_USERNAMES.get("#admin", []):
+                try:
+                    cursor.execute(
+                        "INSERT INTO alternate_usernames (user_id, username) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (admin_id, alt_username)
+                    )
+                except Exception as e:
+                    logger.error(f"Error adding alternate username {alt_username}: {str(e)}")
+
         conn.commit()
         logger.info("All tables initialized successfully")
     except Exception as e:
@@ -155,25 +184,43 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
-    """Аутентифицирует пользователя"""
+def get_user_by_username(username: str) -> Optional[tuple]:
+    """Получает пользователя по юзернейму (основному или альтернативному)"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+
+        # Сначала проверяем основной юзернейм
         cursor.execute(
             'SELECT id, username, name, password FROM users WHERE username = %s',
             (username,)
         )
         user = cursor.fetchone()
 
-        if user and user[3] == hash_password(password):
-            return {"id": user[0], "username": user[1], "name": user[2]}
-        return None
+        if user:
+            return user
+
+        # Если не найден, проверяем альтернативные юзернеймы
+        cursor.execute(
+            'SELECT u.id, u.username, u.name, u.password FROM users u '
+            'JOIN alternate_usernames a ON u.id = a.user_id WHERE a.username = %s',
+            (username,)
+        )
+        return cursor.fetchone()
     except Exception as e:
-        logger.error(f"Error authenticating user: {str(e)}")
+        logger.error(f"Error getting user by username: {str(e)}")
         return None
     finally:
         conn.close()
+
+
+def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Аутентифицирует пользователя"""
+    user = get_user_by_username(username)
+
+    if user and user[3] == hash_password(password):
+        return {"id": user[0], "username": user[1], "name": user[2]}
+    return None
 
 
 def register_user(username: str, password: str, name: str, description: str = "") -> Optional[dict]:
@@ -209,15 +256,20 @@ def get_user_profile(user_id: int) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT username, name, description 
-            FROM users WHERE id = %s
+            SELECT u.username, u.name, u.description,
+                   ARRAY_AGG(a.username) AS alternate_usernames
+            FROM users u
+            LEFT JOIN alternate_usernames a ON u.id = a.user_id
+            WHERE u.id = %s
+            GROUP BY u.id, u.username, u.name, u.description
         ''', (user_id,))
         result = cursor.fetchone()
         if result:
             return {
                 "username": result[0],
                 "name": result[1],
-                "description": result[2]
+                "description": result[2],
+                "alternate_usernames": [u for u in (result[3] or []) if u]  # Фильтруем NULL значения
             }
         return None
     except Exception as e:
@@ -362,7 +414,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
-    response.set_cookie(key="name", value=user['name'], httponly=True)
+    response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
     return response
 
 
@@ -405,7 +457,8 @@ async def register(
     response = RedirectResponse(url=f"/chat/{user['id']}", status_code=303)
     response.set_cookie(key="user_id", value=str(user['id']), httponly=True)
     response.set_cookie(key="username", value=user['username'], httponly=True)
-    response.set_cookie(key="name", value=user['name'], httponly=True)
+    response.set_cookie(key="name", value=user['name'].encode('utf-8').decode('latin-1'), httponly=True)
+
     return response
 
 
@@ -445,7 +498,7 @@ async def update_profile(
         conn.commit()
 
         response = RedirectResponse(url="/profile", status_code=303)
-        response.set_cookie(key="name", value=name, httponly=True)
+        response.set_cookie(key="name", value=name.encode('utf-8').decode('latin-1'), httponly=True)
         return response
     except Exception as e:
         logger.error(f"Error updating profile: {str(e)}")
@@ -530,8 +583,14 @@ async def add_contact(request: Request):
             if contact_username == current_username:
                 return {"success": False, "message": "Вы не можете добавить самого себя"}
 
-            # Поиск контакта
-            cursor.execute('SELECT id, username, name FROM users WHERE LOWER(username) = %s', (contact_username,))
+            # Поиск контакта (основной или альтернативный юзернейм)
+            cursor.execute('''
+                SELECT u.id, u.username, u.name 
+                FROM users u
+                LEFT JOIN alternate_usernames a ON u.id = a.user_id
+                WHERE LOWER(u.username) = %s OR LOWER(a.username) = %s
+                LIMIT 1
+            ''', (contact_username, contact_username))
             contact = cursor.fetchone()
 
             if not contact:
@@ -617,6 +676,23 @@ async def logout():
     return response
 
 
+@app.get("/call/{call_id}", response_class=HTMLResponse)
+async def call_page(request: Request, call_id: str):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    # Проверяем что пользователь участник звонка
+    parts = call_id.split('_')
+    if user_id not in [parts[0], parts[1]]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return templates.TemplateResponse("call.html", {
+        "request": request,
+        "call_id": call_id,
+        "user_id": user_id
+    })
+
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
@@ -667,7 +743,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 manager.pending_calls[call_id] = {
                     "from": user_id,
                     "to": data["to"],
-                    "status": "waiting"
+                    "status": "waiting",
+                    "timestamp": datetime.now()
                 }
                 await manager.send_json(data["to"], {
                     "type": "call_incoming",
@@ -684,51 +761,81 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             elif data["type"] == "call_accept":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                    # Удаляем звонок из ожидающих перед отправкой подтверждения
+                    call_data = manager.pending_calls.pop(call_id)
+                    await manager.send_json(call_data["from"], {
                         "type": "call_accepted",
                         "call_id": call_id,
                         "by": user_id
                     })
-                    del manager.pending_calls[call_id]
 
             elif data["type"] == "call_reject":
                 call_id = data["call_id"]
                 if call_id in manager.pending_calls:
-                    await manager.send_json(manager.pending_calls[call_id]["from"], {
+                    call_data = manager.pending_calls.pop(call_id)
+                    await manager.send_json(call_data["from"], {
                         "type": "call_rejected",
                         "call_id": call_id,
-                        "by": user_id
+                        "by": user_id,
+                        "reason": "Call rejected by recipient"
                     })
-                    del manager.pending_calls[call_id]
 
             elif data["type"] == "webrtc_offer":
-                await manager.send_json(data["to"], {
-                    "type": "webrtc_offer",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "offer": data["offer"],
-                    "is_audio_only": True
-                })
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:  # Проверяем, что пользователь участник звонка
+                    await manager.send_json(data["to"], {
+                        "type": "webrtc_offer",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "offer": data["offer"],
+                        "is_audio_only": data.get("is_audio_only", True)
+                    })
 
             elif data["type"] == "webrtc_answer":
-                await manager.send_json(data["to"], {
-                    "type": "webrtc_answer",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "answer": data["answer"]
-                })
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
+                    await manager.send_json(data["to"], {
+                        "type": "webrtc_answer",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "answer": data["answer"]
+                    })
 
             elif data["type"] == "ice_candidate":
-                await manager.send_json(data["to"], {
-                    "type": "ice_candidate",
-                    "from": user_id,
-                    "call_id": data["call_id"],
-                    "candidate": data["candidate"]
+                call_id = data["call_id"]
+                if call_id.split('_')[1] == user_id or call_id.split('_')[0] == user_id:
+                    await manager.send_json(data["to"], {
+                        "type": "ice_candidate",
+                        "from": user_id,
+                        "call_id": call_id,
+                        "candidate": data["candidate"]
+                    })
+
+            elif data["type"] == "call_end":
+                call_id = data["call_id"]
+                other_user = call_id.split('_')[0] if call_id.split('_')[1] == user_id else call_id.split('_')[1]
+                await manager.send_json(other_user, {
+                    "type": "call_ended",
+                    "call_id": call_id,
+                    "by": user_id
                 })
+                # Очищаем pending calls
+                if call_id in manager.pending_calls:
+                    manager.pending_calls.pop(call_id)
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
         logger.info(f"User {user_id} disconnected")
+        # Отменяем все ожидающие звонки от этого пользователя
+        for call_id, call_data in list(manager.pending_calls.items()):
+            if call_data["from"] == user_id:
+                await manager.send_json(call_data["to"], {
+                    "type": "call_rejected",
+                    "call_id": call_id,
+                    "by": user_id,
+                    "reason": "Caller disconnected"
+                })
+                manager.pending_calls.pop(call_id)
     except Exception as e:
         logger.error(f"Error with {user_id}: {str(e)}")
         manager.disconnect(user_id)
