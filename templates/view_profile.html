@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Профиль - Talkify</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --success-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --dark-bg: #0f0f1a;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientFloat 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientFloat {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-20px) scale(1.02); }
+        }
+
+        .profile-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        .back-link:hover {
+            color: #667eea;
+            border-color: #667eea;
+            transform: translateX(-5px);
+        }
+
+        .profile-header {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .profile-banner {
+            height: 200px;
+            background: var(--primary-gradient);
+            position: relative;
+        }
+
+        .profile-avatar-container {
+            position: relative;
+            margin: -80px 0 20px 40px;
+            width: 120px;
+            height: 120px;
+        }
+
+        .profile-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 4px solid var(--dark-bg);
+            background: var(--secondary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .profile-info {
+            padding: 0 40px 30px;
+        }
+
+        .profile-name {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .profile-username {
+            color: var(--text-secondary);
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .profile-description {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            backdrop-filter: blur(10px);
+            line-height: 1.6;
+        }
+
+        .profile-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            .profile-container {
+                padding: 10px;
+            }
+
+            .profile-banner {
+                height: 150px;
+            }
+
+            .profile-avatar-container {
+                margin: -60px 0 20px 20px;
+                width: 100px;
+                height: 100px;
+            }
+
+            .profile-avatar {
+                width: 100px;
+                height: 100px;
+                font-size: 36px;
+            }
+
+            .profile-info {
+                padding: 0 20px 20px;
+            }
+
+            .profile-name {
+                font-size: 24px;
+            }
+
+            .profile-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="profile-container">
+        <!-- Кнопка назад -->
+        <a href="/chat/{{ request.cookies.get('user_id') }}" class="back-link">
+            ← Назад к чату
+        </a>
+
+        <!-- Профиль пользователя -->
+        <div class="profile-header">
+            <div class="profile-banner"></div>
+
+            <div class="profile-avatar-container">
+                <div class="profile-avatar">
+                    {{ profile.name[0]|upper }}
+                </div>
+            </div>
+
+            <div class="profile-info">
+                <h1 class="profile-name">{{ profile.name }}</h1>
+                <div class="profile-username">{{ profile.username }}</div>
+
+                {% if profile.description %}
+                <div class="profile-description">
+                    {{ profile.description }}
+                </div>
+                {% endif %}
+
+                <div class="profile-stats">
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.contacts }}</div>
+                        <div class="stat-label">Контакты</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.messages }}</div>
+                        <div class="stat-label">Сообщения</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ stats.joined|date('%Y-%m-%d') }}</div>
+                        <div class="stat-label">Присоединился</div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <a href="/chat/{{ request.cookies.get('user_id') }}?contact={{ profile.username }}" class="btn btn-primary">
+                        💬 Написать сообщение
+                    </a>
+                    <button class="btn btn-secondary" onclick="addToContacts()">
+                        📝 Добавить в контакты
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function addToContacts() {
+            alert('Функция добавления в контакты будет реализована в будущем');
+        }
+    </script>
+</body>
+</html>
