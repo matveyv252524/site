@@ -255,12 +255,12 @@ def get_user_profile(user_id: int) -> Optional[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT u.username, u.name, u.description,
+            SELECT u.username, u.name, u.description, u.created_at,
                    ARRAY_AGG(a.username) AS alternate_usernames
             FROM users u
             LEFT JOIN alternate_usernames a ON u.id = a.user_id
             WHERE u.id = %s
-            GROUP BY u.id, u.username, u.name, u.description
+            GROUP BY u.id, u.username, u.name, u.description, u.created_at
         ''', (user_id,))
         result = cursor.fetchone()
         if result:
@@ -268,12 +268,158 @@ def get_user_profile(user_id: int) -> Optional[dict]:
                 "username": result[0],
                 "name": result[1],
                 "description": result[2],
-                "alternate_usernames": [u for u in (result[3] or []) if u]  # Фильтруем NULL значения
+                "created_at": result[3],
+                "alternate_usernames": [u for u in (result[4] or []) if u]
             }
         return None
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
         return None
+    finally:
+        conn.close()
+
+def get_user_stats(user_id: int) -> dict:
+    """Получает статистику пользователя"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # Количество контактов
+        cursor.execute('SELECT COUNT(*) FROM contacts WHERE user_id = %s', (user_id,))
+        contacts_count = cursor.fetchone()[0] or 0
+
+        # Количество сообщений
+        cursor.execute('''
+            SELECT COUNT(*) FROM messages 
+            WHERE sender_id = %s OR receiver_id = %s
+        ''', (user_id, user_id))
+        messages_count = cursor.fetchone()[0] or 0
+
+        # Дата регистрации
+        cursor.execute('SELECT created_at FROM users WHERE id = %s', (user_id,))
+        joined_date = cursor.fetchone()[0]
+
+        return {
+            "contacts": contacts_count,
+            "messages": messages_count,
+            "joined": joined_date
+        }
+    except Exception as e:
+        logger.error(f"Error getting user stats: {str(e)}")
+        return {"contacts": 0, "messages": 0, "joined": datetime.now()}
+    finally:
+        conn.close()
+
+def get_other_users(user_id: int, limit: int = 5) -> List[dict]:
+    """Получает список других пользователей"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, name, description 
+            FROM users 
+            WHERE id != %s 
+            ORDER BY created_at DESC 
+            LIMIT %s
+        ''', (user_id, limit))
+
+        return [{
+            "id": row[0],
+            "username": row[1],
+            "name": row[2],
+            "description": row[3]
+        } for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting other users: {str(e)}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_user_profile(user_id: int) -> Optional[dict]:
+    """Получает профиль пользователя"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT u.username, u.name, u.description, u.created_at,
+                   ARRAY_AGG(a.username) AS alternate_usernames
+            FROM users u
+            LEFT JOIN alternate_usernames a ON u.id = a.user_id
+            WHERE u.id = %s
+            GROUP BY u.id, u.username, u.name, u.description, u.created_at
+        ''', (user_id,))
+        result = cursor.fetchone()
+        if result:
+            return {
+                "username": result[0],
+                "name": result[1],
+                "description": result[2],
+                "created_at": result[3],
+                "alternate_usernames": [u for u in (result[4] or []) if u]
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting user profile: {str(e)}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_user_stats(user_id: int) -> dict:
+    """Получает статистику пользователя"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # Количество контактов
+        cursor.execute('SELECT COUNT(*) FROM contacts WHERE user_id = %s', (user_id,))
+        contacts_count = cursor.fetchone()[0] or 0
+
+        # Количество сообщений
+        cursor.execute('''
+            SELECT COUNT(*) FROM messages 
+            WHERE sender_id = %s OR receiver_id = %s
+        ''', (user_id, user_id))
+        messages_count = cursor.fetchone()[0] or 0
+
+        # Дата регистрации
+        cursor.execute('SELECT created_at FROM users WHERE id = %s', (user_id,))
+        joined_date = cursor.fetchone()[0]
+
+        return {
+            "contacts": contacts_count,
+            "messages": messages_count,
+            "joined": joined_date
+        }
+    except Exception as e:
+        logger.error(f"Error getting user stats: {str(e)}")
+        return {"contacts": 0, "messages": 0, "joined": datetime.now()}
+    finally:
+        conn.close()
+
+def get_other_users(user_id: int, limit: int = 5) -> List[dict]:
+    """Получает список других пользователей"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, name, description 
+            FROM users 
+            WHERE id != %s 
+            ORDER BY created_at DESC 
+            LIMIT %s
+        ''', (user_id, limit))
+
+        return [{
+            "id": row[0],
+            "username": row[1],
+            "name": row[2],
+            "description": row[3]
+        } for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting other users: {str(e)}")
+        return []
     finally:
         conn.close()
 
@@ -486,39 +632,42 @@ async def profile_page(request: Request):
     if not profile:
         return RedirectResponse(url="/login")
 
+    stats = get_user_stats(int(user_id))
+    other_profiles = get_other_users(int(user_id))
+
     return templates.TemplateResponse(
         "profile.html",
-        {"request": request, "profile": profile}
+        {
+            "request": request,
+            "profile": profile,
+            "stats": stats,
+            "other_profiles": other_profiles
+        }
     )
 
-
-@app.post("/update-profile")
-async def update_profile(
-        request: Request,
-        name: str = Form(...),
-        description: str = Form("")
-):
-    user_id = request.cookies.get("user_id")
-    if not user_id:
+@app.get("/view-profile/{profile_id}", response_class=HTMLResponse)
+async def view_profile(request: Request, profile_id: int):
+    # Проверка аутентификации текущего пользователя
+    current_user_id = request.cookies.get("user_id")
+    if not current_user_id:
         return RedirectResponse(url="/login")
 
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE users SET name = %s, description = %s
-            WHERE id = %s
-        ''', (name, description, user_id))
-        conn.commit()
+    # Получение профиля для просмотра
+    profile = get_user_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Профиль не найден")
 
-        response = RedirectResponse(url="/profile", status_code=303)
-        response.set_cookie(key="name", value=name.encode('utf-8').decode('latin-1'), httponly=True)
-        return response
-    except Exception as e:
-        logger.error(f"Error updating profile: {str(e)}")
-        return RedirectResponse(url="/profile", status_code=303)
-    finally:
-        conn.close()
+    stats = get_user_stats(profile_id)
+
+    return templates.TemplateResponse(
+        "view_profile.html",
+        {
+            "request": request,
+            "profile": profile,
+            "stats": stats,
+            "is_own_profile": False
+        }
+    )
 
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
