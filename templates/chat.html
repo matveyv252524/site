@@ -1,94 +1,71 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Talkify</title>
+    <title>Мессенджер</title>
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            --success-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-            --dark-bg: #0f0f1a;
-            --card-bg: rgba(255, 255, 255, 0.08);
-            --card-border: rgba(255, 255, 255, 0.12);
-            --text-primary: #ffffff;
-            --text-secondary: rgba(255, 255, 255, 0.7);
+            --primary-color: #1da1f2;
+            --secondary-color: #e8f5fe;
+            --error-color: #e0245e;
+            --background: #f5f8fa;
+            --white: #ffffff;
+            --text-color: #14171a;
+            --light-text: #657786;
+            --border-color: #e6ecf0;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
         }
 
         body {
-            background: var(--dark-bg);
-            color: var(--text-primary);
+            background: var(--background);
+            color: var(--text-color);
             height: 100vh;
             display: flex;
             overflow: hidden;
-            position: relative;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background:
-                radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
-            z-index: -1;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(1deg); }
         }
 
         /* Контейнер контактов */
         .contacts-container {
             width: 350px;
-            background: var(--card-bg);
-            backdrop-filter: blur(20px);
-            border-right: 1px solid var(--card-border);
+            background: var(--white);
+            border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             height: 100vh;
-            animation: slideInLeft 0.6s ease-out;
         }
 
+        /* Шапка контактов */
         .contacts-header {
-            padding: 20px;
-            border-bottom: 1px solid var(--card-border);
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
 
         .profile-btn {
-            background: var(--primary-gradient);
-            color: white;
+            background: none;
             border: none;
-            padding: 10px 20px;
-            border-radius: 10px;
-            font-weight: 600;
+            color: var(--primary-color);
+            font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
+            padding: 5px 10px;
+            border-radius: 4px;
         }
 
         .profile-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            background: var(--secondary-color);
         }
 
+        /* Поиск контактов */
         .search-container {
             padding: 15px;
-            border-bottom: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--border-color);
         }
 
         .search-box {
@@ -97,118 +74,91 @@
 
         .search-input {
             width: 100%;
-            padding: 12px 15px 12px 45px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            color: var(--text-primary);
+            padding: 10px 15px 10px 35px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
             font-size: 14px;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            background: var(--background);
         }
 
         .search-input::placeholder {
-            color: var(--text-secondary);
+            color: var(--light-text);
         }
 
         .search-icon {
             position: absolute;
-            left: 15px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
-            color: var(--text-secondary);
+            color: var(--light-text);
         }
 
+        /* Добавление контактов */
         .add-contact-container {
             padding: 15px;
-            border-bottom: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             gap: 10px;
         }
 
         .add-contact-input {
             flex: 1;
-            padding: 12px 15px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            border-radius: 10px;
-            color: var(--text-primary);
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
             font-size: 14px;
-            backdrop-filter: blur(10px);
         }
 
         .add-contact-btn {
-            background: var(--success-gradient);
+            background: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 10px;
-            padding: 0 20px;
+            border-radius: 4px;
+            padding: 0 15px;
             cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
+            font-weight: bold;
         }
 
         .add-contact-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(67, 233, 123, 0.4);
+            background: #1991db;
         }
 
+        /* Список контактов */
         .contacts-list {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
         }
 
         .contact-item {
-            padding: 15px;
-            margin-bottom: 8px;
-            border-radius: 12px;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
             cursor: pointer;
             display: flex;
             align-items: center;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.04);
-            backdrop-filter: blur(10px);
+            transition: background 0.2s;
         }
 
         .contact-item:hover {
-            background: rgba(255, 255, 255, 0.08);
-            transform: translateX(5px);
+            background: var(--secondary-color);
         }
 
         .contact-item.active {
-            background: rgba(102, 126, 234, 0.2);
-            border-left: 4px solid #667eea;
+            background: var(--secondary-color);
+            border-left: 3px solid var(--primary-color);
         }
 
-        .avatar-gradient-1 { background: var(--primary-gradient); }
-        .avatar-gradient-2 { background: var(--secondary-gradient); }
-        .avatar-gradient-3 { background: var(--accent-gradient); }
-        .avatar-gradient-4 { background: var(--success-gradient); }
-
         .contact-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 12px;
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            background: var(--primary-color);
+            color: white;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
-            color: white;
-            margin-right: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
-        }
-
-        .contact-item:hover .contact-avatar {
-            transform: scale(1.1);
-            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4);
+            margin-right: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
         }
 
         .contact-info {
@@ -217,15 +167,15 @@
         }
 
         .contact-name {
-            font-weight: 600;
-            margin-bottom: 4px;
+            font-weight: bold;
+            margin-bottom: 2px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .contact-username {
-            color: var(--text-secondary);
+            color: var(--light-text);
             font-size: 13px;
             white-space: nowrap;
             overflow: hidden;
@@ -238,17 +188,16 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-            animation: fadeIn 0.6s ease-out;
         }
 
+        /* Шапка чата */
         .chat-header {
-            padding: 20px;
-            border-bottom: 1px solid var(--card-border);
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            background: var(--white);
         }
 
         .chat-user {
@@ -257,17 +206,16 @@
         }
 
         .chat-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 12px;
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            background: var(--primary-color);
+            color: white;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
-            color: white;
-            margin-right: 15px;
-            background: var(--primary-gradient);
-            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            margin-right: 12px;
+            font-weight: bold;
         }
 
         .chat-user-info {
@@ -275,87 +223,64 @@
         }
 
         .chat-user-name {
-            font-weight: 600;
-            font-size: 16px;
+            font-weight: bold;
         }
 
         .chat-user-status {
-            color: var(--text-secondary);
+            color: var(--light-text);
             font-size: 13px;
         }
 
         .call-btn {
-            background: var(--success-gradient);
+            background: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 12px;
-            width: 50px;
-            height: 50px;
+            border-radius: 4px;
+            width: 40px;
+            height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 18px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(67, 233, 123, 0.4);
         }
 
-        .call-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 8px 25px rgba(67, 233, 123, 0.6);
-        }
-
+        /* Сообщения */
         .messages-container {
             flex: 1;
             padding: 20px;
             overflow-y: auto;
-            background: rgba(15, 15, 26, 0.5);
-            backdrop-filter: blur(10px);
+            background: var(--white);
         }
 
         .message {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             max-width: 70%;
-            padding: 15px 20px;
-            border-radius: 18px;
+            padding: 10px 15px;
+            border-radius: 4px;
             position: relative;
-            animation: messageSlide 0.3s ease-out;
-            backdrop-filter: blur(10px);
-        }
-
-        @keyframes messageSlide {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
         }
 
         .received {
-            background: rgba(255, 255, 255, 0.1);
+            background: var(--background);
             align-self: flex-start;
-            border-top-left-radius: 4px;
+            border-top-left-radius: 0;
         }
 
         .sent {
-            background: var(--primary-gradient);
+            background: var(--primary-color);
             color: white;
             align-self: flex-end;
-            border-top-right-radius: 4px;
+            border-top-right-radius: 0;
         }
 
         .message-sender {
-            font-weight: 600;
-            margin-bottom: 8px;
+            font-weight: bold;
+            margin-bottom: 5px;
             font-size: 14px;
-            opacity: 0.9;
         }
 
         .received .message-sender {
-            color: #667eea;
+            color: var(--primary-color);
         }
 
         .sent .message-sender {
@@ -364,96 +289,125 @@
 
         .message-text {
             word-wrap: break-word;
-            line-height: 1.4;
         }
 
         .message-time {
             font-size: 11px;
             text-align: right;
-            margin-top: 8px;
-            opacity: 0.7;
+            margin-top: 5px;
+            opacity: 0.8;
         }
 
+        /* Форма ввода сообщения */
         .message-form {
-            padding: 20px;
-            border-top: 1px solid var(--card-border);
-            background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+            background: var(--white);
             display: flex;
-            gap: 12px;
+            gap: 10px;
         }
 
         .message-input {
             flex: 1;
-            padding: 15px 20px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
             resize: none;
-            color: var(--text-primary);
             font-size: 14px;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
+            height: 40px;
             max-height: 120px;
         }
 
-        .message-input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-        }
-
-        .send-btn {
-            background: var(--primary-gradient);
+        .send-btn, .call-action-btn {
+            background: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 12px;
-            padding: 0 25px;
+            border-radius: 4px;
+            padding: 0 15px;
             cursor: pointer;
-            font-weight: 600;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            font-weight: bold;
         }
 
-        .send-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        /* Уведомления */
+        .call-notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--white);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 1000;
         }
 
-        /* Уведомления и прочее */
+        .call-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .accept-call {
+            background: #17bf63;
+        }
+
+        .reject-call {
+            background: var(--error-color);
+        }
+
+        .waiting-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .cancel-call {
+            background: var(--error-color);
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Статус соединения */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            background: var(--error-color);
+            color: white;
+        }
+
+        .connected #connection-status {
+            background: #17bf63;
+        }
+
+        /* Уведомление о новом сообщении */
         .unread-badge {
-            background: var(--secondary-gradient);
+            background-color: var(--primary-color);
             color: white;
             border-radius: 50%;
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 12px;
-            font-weight: 600;
             margin-left: auto;
-            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
-        }
-
-        #connection-status {
-            position: fixed;
-            top: 15px;
-            right: 15px;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            background: var(--secondary-gradient);
-            color: white;
-            box-shadow: 0 4px 20px rgba(245, 87, 108, 0.4);
-            z-index: 1000;
-        }
-
-        .connected #connection-status {
-            background: var(--success-gradient);
-            box-shadow: 0 4px 20px rgba(67, 233, 123, 0.4);
         }
     </style>
 </head>
@@ -534,34 +488,6 @@
     </div>
 
     <script>
-        let ws = null;
-let reconnectAttempts = 0;
-const maxReconnectAttempts = 10;
-let connectionCheckInterval = null;
-
-// Функция проверки соединения
-function startConnectionCheck() {
-    if (connectionCheckInterval) {
-        clearInterval(connectionCheckInterval);
-    }
-
-    connectionCheckInterval = setInterval(() => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            console.log("Connection lost, attempting to reconnect...");
-            connectWebSocket();
-        }
-    }, 5000); // Проверяем каждые 5 секунд
-}
-
-// Останавливаем проверку при закрытии страницы
-window.addEventListener('beforeunload', () => {
-    if (connectionCheckInterval) {
-        clearInterval(connectionCheckInterval);
-    }
-    if (ws) {
-        ws.close();
-    }
-});
         const userId = "{{ user_id }}";
         const username = "{{ username }}";
         const name = "{{ name }}";
@@ -585,74 +511,54 @@ window.addEventListener('beforeunload', () => {
             }
         }
 
-       function connectWebSocket() {
-    try {
-        // Получаем текущий хост и порт
-        const host = window.location.host;
-        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            ws = new WebSocket(`${protocol}${window.location.host}/ws/${userId}`);
 
-        // Создаем WebSocket соединение
-        ws = new WebSocket(`${protocol}${host}/ws/${userId}`);
+            ws.onopen = () => {
+                updateStatus("Подключено");
+                reconnectAttempts = 0;
+                console.log("WebSocket connected");
 
-        console.log("Connecting to WebSocket:", `${protocol}${host}/ws/${userId}`);
+                if (currentContact) {
+                    loadMessages(currentContact);
+                }
+            };
 
-        ws.onopen = () => {
-            console.log("✅ WebSocket connected successfully");
-            updateStatus("Подключено");
-            reconnectAttempts = 0;
+            ws.onclose = () => {
+                updateStatus("Отключено");
+                console.log("WebSocket disconnected");
 
-            // Загружаем сообщения если есть активный контакт
-            if (currentContact) {
-                loadMessages(currentContact);
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    const delay = Math.min(1000 * (reconnectAttempts + 1), 5000);
+                    console.log(`Reconnecting in ${delay}ms...`);
+                    setTimeout(connectWebSocket, delay);
+                    reconnectAttempts++;
+                } else {
+                    console.log("Max reconnection attempts reached");
+                }
+            };
 
-                // Отмечаем сообщения как прочитанные
-                setTimeout(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: "mark_read",
-                            contact_id: currentContact
-                        }));
-                    }
-                }, 1000);
-            }
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                updateStatus("Ошибка");
+            };
 
-            // Запрашиваем разрешение на уведомления
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission().then(permission => {
-                    if (permission === 'granted') {
-                        console.log("Notification permission granted");
-                    }
-                });
-            }
-        };
-
-        ws.onclose = (event) => {
-            console.log("❌ WebSocket disconnected:", event.code, event.reason);
-            updateStatus("Отключено");
-
-            if (reconnectAttempts < maxReconnectAttempts) {
-                const delay = Math.min(1000 * (reconnectAttempts + 1), 10000);
-                console.log(`Reconnecting in ${delay}ms...`);
-                setTimeout(connectWebSocket, delay);
-                reconnectAttempts++;
-            } else {
-                console.log("Max reconnection attempts reached");
-                showNotification("Соединение потеряно. Перезагрузите страницу.");
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            updateStatus("Ошибка соединения");
-        };
-
-        ws.onmessage = (event) => {
-            try {
+            ws.onmessage = (event) => {
+                console.log("WebSocket message received:", event.data);
                 const data = JSON.parse(event.data);
-                console.log("📨 WebSocket message received:", data);
 
                 if (data.type === "message") {
-                    handleIncomingMessage(data);
+                    // Проверяем, активен ли чат с отправителем
+                    const isActiveChat = currentContact === data.from;
+
+                    if (isActiveChat) {
+                        // Если чат активен, сразу отображаем сообщение
+                        displayMessage(data.from, data.message, true, data.timestamp);
+                    } else {
+                        // Если чат не активен, добавляем уведомление
+                        incrementUnreadCount(data.from);
+                    }
                 }
                 else if (data.type === "call_incoming") {
                     showIncomingCall(data.from, data.call_id);
@@ -664,162 +570,13 @@ window.addEventListener('beforeunload', () => {
                     handleCallAccepted(data.call_id);
                 }
                 else if (data.type === "call_rejected") {
-                    handleCallRejected(data.by, data.reason);
-                }
-                else if (data.type === "call_ended") {
-                    handleCallEnded(data.by);
+                    handleCallRejected(data.by);
                 }
                 else if (data.type === "notification") {
                     showNotification(data.message);
                 }
-
-            } catch (error) {
-                console.error("Error parsing WebSocket message:", error, event.data);
-            }
-        };
-
-    } catch (error) {
-        console.error("Error creating WebSocket:", error);
-        updateStatus("Ошибка подключения");
-
-        // Пытаемся переподключиться
-        if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = 2000;
-            setTimeout(connectWebSocket, delay);
-            reconnectAttempts++;
+            };
         }
-    }
-}
-
-// Добавьте функцию обработки входящих сообщений
-function handleIncomingMessage(data) {
-    // Проверяем, активен ли чат с отправителем
-    const isActiveChat = currentContact === data.from;
-
-    if (isActiveChat) {
-        // Если чат активен, сразу отображаем сообщение
-        displayMessage(data.from, data.message, true, data.timestamp, data.sender_name);
-
-        // Прокручиваем к новому сообщению
-        setTimeout(() => {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }, 100);
-
-        // Отмечаем сообщение как прочитанное на сервере
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: "mark_read",
-                contact_id: data.from
-            }));
-        }
-    } else {
-        // Если чат не активен, добавляем уведомление
-        incrementUnreadCount(data.from);
-
-        // Показываем уведомление
-        showNotification(`Новое сообщение от ${data.sender_name}: ${data.message}`);
-
-        // Мигаем вкладкой браузера
-        flashTab(`💬 ${data.sender_name}`);
-    }
-}
-
-// Добавьте эти вспомогательные функции:
-
-function showNotification(message) {
-    // Браузерные уведомления
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Talkify', {
-            body: message,
-            icon: '/favicon.ico',
-            tag: 'talkify-message'
-        });
-    }
-
-    // Встроенные уведомления в интерфейсе
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--primary-gradient);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        z-index: 10000;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
-        animation: slideInRight 0.3s ease-out;
-        max-width: 300px;
-        word-wrap: break-word;
-    `;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.style.animation = 'fadeOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-function flashTab(title) {
-    const originalTitle = document.title;
-    let isFlashing = false;
-    let flashCount = 0;
-    const maxFlashes = 5;
-
-    const flash = () => {
-        if (flashCount >= maxFlashes) {
-            document.title = originalTitle;
-            return;
-        }
-
-        isFlashing = !isFlashing;
-        document.title = isFlashing ? title : originalTitle;
-        flashCount++;
-
-        setTimeout(flash, 1000);
-    };
-
-    flash();
-}
-
-// Добавьте стили для анимаций
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-
-    @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
-    }
-
-    @keyframes pulseUnread {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-    }
-`;
-document.head.appendChild(style);
-
-// Функция для отметки сообщений как прочитанных при открытии чата
-function markMessagesAsRead(contactId) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: "mark_read",
-            contact_id: contactId
-        }));
-    }
-}
-
-// Обновите функцию selectContact для отметки сообщений как прочитанных
-function selectContact(contactId, contactUsername, contactName) {
-    // ... существующий код ...
-
-    // Отмечаем сообщения как прочитанные
-    markMessagesAsRead(contactId);
-    resetUnreadCount(contactId);
 
         function incrementUnreadCount(contactId) {
             if (!unreadMessages[contactId]) {
@@ -917,42 +674,32 @@ function selectContact(contactId, contactUsername, contactName) {
         }
 
         function sendMessage() {
-    const input = document.getElementById('messageInput');
-    const message = input.value.trim();
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
 
-    if (!message || !currentContact) return;
+            if (!message || !currentContact) return;
 
-    // Проверяем соединение
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.warn("WebSocket not connected, attempting to reconnect...");
-        connectWebSocket();
-
-        // Ждем немного перед повторной попыткой
-        setTimeout(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                sendMessage();
-            } else {
-                alert("Нет соединения. Сообщение не отправлено.");
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Соединение потеряно. Пытаемся переподключиться...");
+                connectWebSocket();
+                return;
             }
-        }, 1000);
-        return;
-    }
 
-    try {
-        ws.send(JSON.stringify({
-            type: "message",
-            to: currentContact,
-            message: message
-        }));
+            try {
+                ws.send(JSON.stringify({
+                    type: "message",
+                    to: currentContact,
+                    message: message
+                }));
 
-        displayMessage(userId, message, false, new Date().toISOString());
-        input.value = '';
-        input.style.height = '40px';
-    } catch (e) {
-        console.error("Error sending message:", e);
-        alert("Не удалось отправить сообщение");
-    }
-}
+                displayMessage(userId, message, false, new Date().toISOString());
+                input.value = '';
+                input.style.height = '40px';
+            } catch (e) {
+                console.error("Error sending message:", e);
+                alert("Не удалось отправить сообщение");
+            }
+        }
 
         function showIncomingCall(from, callId) {
         document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
@@ -1099,13 +846,8 @@ function selectContact(contactId, contactUsername, contactName) {
 
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
-    console.log("Initializing Talkify chat...");
+            connectWebSocket();
 
-    // Подключаемся к WebSocket
-    connectWebSocket();
-
-    // Запускаем проверку соединения
-    startConnectionCheck();
             // Обработчик отправки сообщения
             document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
 
