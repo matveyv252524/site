@@ -569,6 +569,7 @@ async def profile_page(request: Request):
         logger.error(f"Error in profile_page: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 @app.get("/view-profile/{profile_id}", response_class=HTMLResponse)
 async def view_profile(request: Request, profile_id: int):
     # Проверка аутентификации текущего пользователя
@@ -583,6 +584,12 @@ async def view_profile(request: Request, profile_id: int):
 
     stats = get_user_stats(profile_id)
 
+    # Убедимся, что joined правильно отформатирован
+    if isinstance(stats["joined"], datetime):
+        stats["joined_formatted"] = stats["joined"].strftime("%Y-%m-%d")
+    else:
+        stats["joined_formatted"] = str(stats["joined"])
+
     return templates.TemplateResponse(
         "view_profile.html",
         {
@@ -592,7 +599,6 @@ async def view_profile(request: Request, profile_id: int):
             "is_own_profile": False
         }
     )
-
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
