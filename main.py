@@ -356,6 +356,19 @@ def get_username(user_id: str) -> str:
     finally:
         conn.close()
 
+def get_user_name(user_id: str) -> str:
+    """Получает имя пользователя по ID"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM users WHERE id = %s', (int(user_id),))
+        result = cursor.fetchone()
+        return result[0] if result else "Unknown"
+    except Exception as e:
+        logger.error(f"Error getting user name: {str(e)}")
+        return "Unknown"
+    finally:
+        conn.close()
 
 # ======================
 # LIFESPAN HANDLER
