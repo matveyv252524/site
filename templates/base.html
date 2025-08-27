@@ -224,5 +224,38 @@
     </main>
 
     {% block scripts %}{% endblock %}
+<script>
+    // Загрузка настроек для всех страниц
+    document.addEventListener('DOMContentLoaded', function() {
+        function loadSettings() {
+            try {
+                const saved = localStorage.getItem('talkifySettings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+
+                    // Применяем тему
+                    document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
+                    document.documentElement.setAttribute('data-color-scheme', settings.colorScheme || 'purple');
+
+                    // Применяем размер шрифта
+                    if (settings.fontSize) {
+                        document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading settings:', e);
+            }
+        }
+
+        loadSettings();
+
+        // Слушаем изменения настроек из других вкладок
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'talkifySettings' || e.key === 'settingsLastUpdated') {
+                loadSettings();
+            }
+        });
+    });
+</script>
 </body>
 </html>
