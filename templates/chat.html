@@ -38,7 +38,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: 
+            background:
                 radial-gradient(circle at 20% 20%, rgba(103, 126, 234, 0.2) 0%, transparent 50%),
                 radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.2) 0%, transparent 50%);
             z-index: -1;
@@ -453,17 +453,38 @@
             background: var(--success-gradient);
             box-shadow: 0 4px 20px rgba(67, 233, 123, 0.4);
         }
+
+        .profile-btn {
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+.profile-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
     </style>
 </head>
 <body>
     <div id="connection-status">Отключено</div>
 
     <!-- Контейнер контактов -->
-    <div class="contacts-container">
-        <div class="contacts-header">
-            <div>Контакты</div>
-            <button class="profile-btn" onclick="window.location.href='/profile'">Профиль</button>
-        </div>
+    <div class="contacts-header">
+    <div>Контакты</div>
+    <div style="display: flex; gap: 10px;">
+        <button class="profile-btn" onclick="window.location.href='/profile'">Профиль</button>
+        <button class="profile-btn" onclick="window.location.href='/settings'" style="background: var(--accent-gradient);">
+            ⚙️ Настройки
+        </button>
+    </div>
+
 
         <!-- Поиск контактов -->
         <div class="search-container">
@@ -564,10 +585,10 @@
 
                 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
                 const wsUrl = `${protocol}${window.location.host}/ws/${userId}`;
-                
+
                 console.log("Подключение к:", wsUrl);
                 updateStatus("Подключение...");
-                
+
                 ws = new WebSocket(wsUrl);
 
                 ws.onopen = function() {
@@ -579,7 +600,7 @@
                 ws.onclose = function() {
                     console.log("❌ WebSocket отключен");
                     updateStatus("Отключено");
-                    
+
                     // Пытаемся переподключиться
                     if (reconnectAttempts < maxReconnectAttempts) {
                         const delay = Math.min(3000, reconnectAttempts * 1000 + 1000);
@@ -602,7 +623,7 @@
                         if (data.type === "message") {
                             // Проверяем, активен ли чат с отправителем
                             const isActiveChat = currentContact === data.from;
-                            
+
                             if (isActiveChat) {
                                 // Если чат активен, сразу отображаем сообщение
                                 displayMessage(data.from, data.message, true, data.timestamp);
@@ -643,7 +664,7 @@
                 unreadMessages[contactId] = 0;
             }
             unreadMessages[contactId]++;
-            
+
             const unreadBadge = document.getElementById(`unread-${contactId}`);
             if (unreadBadge) {
                 unreadBadge.textContent = unreadMessages[contactId];
