@@ -769,6 +769,33 @@ async def logout():
     return response
 
 
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "user_id": user_id
+    })
+
+
+@app.post("/update-settings")
+async def update_settings(request: Request):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return {"success": False, "message": "Not authenticated"}
+
+    try:
+        data = await request.json()
+        # Здесь можно сохранять настройки в базу данных
+        # Пока просто возвращаем успех
+        return {"success": True, "message": "Settings updated"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
