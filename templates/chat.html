@@ -476,44 +476,45 @@
     <div id="connection-status">Отключено</div>
 
     <!-- Контейнер контактов -->
-<div class="contacts-header">
-    <div>Контакты</div>
-    <div style="display: flex; gap: 10px;">
-        <button class="profile-btn" onclick="window.location.href='/profile'">Профиль</button>
-        <button class="profile-btn" onclick="window.location.href='/settings'" style="background: var(--accent-gradient);">
-            ⚙️ Настройки
-        </button>
+<div class="contacts-container">
+    <div class="contacts-header">
+        <div>Контакты</div>
+        <div class="header-buttons">
+            <button class="profile-btn" onclick="window.location.href='/profile'">Профиль</button>
+            <button class="profile-btn settings-btn" onclick="window.location.href='/settings'">
+                ⚙️ Настройки
+            </button>
+        </div>
+    </div>
+
+    <!-- Поиск контактов -->
+    <div class="search-container">
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchContacts" class="search-input" placeholder="Поиск контактов...">
+        </div>
+    </div>
+
+    <!-- Добавление нового контакта -->
+    <div class="add-contact-container">
+        <input type="text" id="newContactInput" class="add-contact-input" placeholder="Введите юзернейм (начинается с #)">
+        <button id="addContactBtn" class="add-contact-btn">+</button>
+    </div>
+
+    <!-- Список контактов -->
+    <div class="contacts-list" id="contactsList">
+        {% for contact in contacts %}
+        <div class="contact-item" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
+            <div class="contact-avatar avatar-gradient-{{ loop.index % 4 + 1 }}">{{ contact.name[0]|upper }}</div>
+            <div class="contact-info">
+                <div class="contact-name">{{ contact.name }}</div>
+                <div class="contact-username">{{ contact.username }}</div>
+            </div>
+            <div class="unread-badge" id="unread-{{ contact.id }}" style="display: none;"></div>
+        </div>
+        {% endfor %}
     </div>
 </div>
-
-
-        <!-- Поиск контактов -->
-        <div class="search-container">
-            <div class="search-box">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="searchContacts" class="search-input" placeholder="Поиск контактов...">
-            </div>
-        </div>
-
-        <!-- Добавление нового контакта -->
-        <div class="add-contact-container">
-            <input type="text" id="newContactInput" class="add-contact-input" placeholder="Введите юзернейм (начинается с #)">
-            <button id="addContactBtn" class="add-contact-btn">+</button>
-        </div>
-
-        <!-- Список контактов -->
-        <div class="contacts-list" id="contactsList">
-            {% for contact in contacts %}
-            <div class="contact-item" data-contact-id="{{ contact.id }}" onclick="selectContact('{{ contact.id }}', '{{ contact.username }}', '{{ contact.name }}')">
-                <div class="contact-avatar avatar-gradient-{{ loop.index % 4 + 1 }}">{{ contact.name[0]|upper }}</div>
-                <div class="contact-info">
-                    <div class="contact-name">{{ contact.name }}</div>
-                    <div class="contact-username">{{ contact.username }}</div>
-                </div>
-                <div class="unread-badge" id="unread-{{ contact.id }}" style="display: none;"></div>
-            </div>
-            {% endfor %}
-        </div>
 
     <!-- Основной чат -->
     <div class="chat-container" id="chatContainer" style="display: none;">
