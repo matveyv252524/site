@@ -204,18 +204,16 @@
                 <a href="/" class="logo">Talkify</a>
                 <div class="nav-links">
                     {% if request.cookies.get('user_id') %}
-                        <a href="/chat/{{ request.cookies.get('user_id') }}" class="nav-link">💬 Чат</a>
-                        <a href="/profile" class="nav-link">👤 Профиль</a>
-                        <div class="user-info">
-                            <div class="user-avatar">
-                                {{ request.cookies.get('name')[0]|upper }}
-                            </div>
-                            <a href="/logout" class="nav-link">🚪 Выйти</a>
-                        </div>
-                    {% else %}
-                        <a href="/login" class="nav-link">🔑 Вход</a>
-                        <a href="/register" class="nav-link">✨ Регистрация</a>
-                    {% endif %}
+    <a href="/chat/{{ request.cookies.get('user_id') }}" class="nav-link">💬 Чат</a>
+    <a href="/profile" class="nav-link">👤 Профиль</a>
+    <a href="/settings" class="nav-link">⚙️ Настройки</a> <!-- Новая строка -->
+    <div class="user-info">
+        <div class="user-avatar">
+            {{ request.cookies.get('name')[0]|upper }}
+        </div>
+        <a href="/logout" class="nav-link">🚪 Выйти</a>
+    </div>
+{% endif %}
                 </div>
             </div>
         </div>
@@ -228,4 +226,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-
