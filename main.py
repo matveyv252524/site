@@ -789,10 +789,14 @@ async def update_settings(request: Request):
 
     try:
         data = await request.json()
-        # Здесь можно сохранять настройки в базу данных
-        # Пока просто возвращаем успех
-        return {"success": True, "message": "Settings updated"}
+
+        # Здесь можно сохранять настройки в базу данных для конкретного пользователя
+        # Пока просто логируем
+        logger.info(f"User {user_id} updated settings: {data}")
+
+        return {"success": True, "message": "Settings updated successfully"}
     except Exception as e:
+        logger.error(f"Error updating settings: {str(e)}")
         return {"success": False, "message": str(e)}
 
 
