@@ -543,196 +543,209 @@
     </div>
 
     <script>
-        // Текущие настройки
-        let currentSettings = {
-            theme: 'dark',
-            colorScheme: 'purple',
-            fontSize: 16,
-            notifications: true,
-            sounds: true,
-            autostart: false,
-            sync: true
-        };
+    // Текущие настройки по умолчанию
+    const defaultSettings = {
+        theme: 'dark',
+        colorScheme: 'purple',
+        fontSize: 16,
+        notifications: true,
+        sounds: true,
+        autostart: false,
+        sync: true
+    };
 
-        // Загрузка сохраненных настроек
-        function loadSettings() {
-            const saved = localStorage.getItem('appSettings');
+    let currentSettings = {...defaultSettings};
+
+    // Загрузка сохраненных настроек
+    function loadSettings() {
+        try {
+            const saved = localStorage.getItem('talkifySettings');
             if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    currentSettings = {...currentSettings, ...parsed};
-                    applySettings();
-                } catch (e) {
-                    console.error('Error loading settings:', e);
-                }
+                const parsed = JSON.parse(saved);
+                currentSettings = {...defaultSettings, ...parsed};
+                applySettings();
             }
+        } catch (e) {
+            console.error('Error loading settings:', e);
+            localStorage.removeItem('talkifySettings');
         }
+    }
 
-        // Применение настроек
-        function applySettings() {
-            // Применяем тему
-            document.documentElement.setAttribute('data-theme', currentSettings.theme);
-            document.documentElement.setAttribute('data-color-scheme', currentSettings.colorScheme);
+    // Применение настроек
+    function applySettings() {
+        // Применяем тему и цветовую схему
+        document.documentElement.setAttribute('data-theme', currentSettings.theme);
+        document.documentElement.setAttribute('data-color-scheme', currentSettings.colorScheme);
 
-            // Применяем размер шрифта
-            document.documentElement.style.setProperty('--font-size', currentSettings.fontSize + 'px');
+        // Применяем размер шрифта
+        document.documentElement.style.setProperty('--font-size', currentSettings.fontSize + 'px');
+        if (document.getElementById('fontSizeSlider')) {
             document.getElementById('fontSizeSlider').value = currentSettings.fontSize;
             updateFontSizeLabel();
-
-            // Обновляем UI
-            updateThemeButtons();
-            updateColorButtons();
-            updateCheckboxes();
         }
 
-        // Обновление кнопок тем
-        function updateThemeButtons() {
-            document.querySelectorAll('.theme-option').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.theme === currentSettings.theme);
-            });
-        }
+        // Обновляем UI
+        updateThemeButtons();
+        updateColorButtons();
+        updateCheckboxes();
+    }
 
-        // Обновление кнопок цветов
-        function updateColorButtons() {
-            document.querySelectorAll('.color-option').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.color === currentSettings.colorScheme);
-            });
-        }
+    // Обновление кнопок тем
+    function updateThemeButtons() {
+        document.querySelectorAll('.theme-option').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.theme === currentSettings.theme);
+        });
+    }
 
-        // Обновление чекбоксов
-        function updateCheckboxes() {
-            document.querySelectorAll('.checkbox-item').forEach(item => {
-                const setting = item.dataset.setting;
-                const checkbox = item.querySelector('.checkbox');
-                if (currentSettings[setting]) {
-                    checkbox.classList.add('checked');
-                } else {
-                    checkbox.classList.remove('checked');
-                }
-            });
-        }
+    // Обновление кнопок цветов
+    function updateColorButtons() {
+        document.querySelectorAll('.color-option').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.color === currentSettings.colorScheme);
+        });
+    }
 
-        // Обновление подписи размера шрифта
-        function updateFontSizeLabel() {
-            const value = currentSettings.fontSize;
-            let label = 'Средний';
-            if (value <= 14) label = 'Мелкий';
-            if (value >= 18) label = 'Крупный';
-            document.getElementById('fontSizeValue').textContent = label;
-        }
+    // Обновление чекбоксов
+    function updateCheckboxes() {
+        document.querySelectorAll('.checkbox-item').forEach(item => {
+            const setting = item.dataset.setting;
+            const checkbox = item.querySelector('.checkbox');
+            if (currentSettings[setting]) {
+                checkbox.classList.add('checked');
+            } else {
+                checkbox.classList.remove('checked');
+            }
+        });
+    }
 
-        // Сохранение настроек
-        function saveSettings() {
-            localStorage.setItem('appSettings', JSON.stringify(currentSettings));
+    // Обновление подписи размера шрифта
+    function updateFontSizeLabel() {
+        if (!document.getElementById('fontSizeValue')) return;
 
-            // Показываем уведомление об успехе
+        const value = currentSettings.fontSize;
+        let label = 'Средний';
+        if (value <= 14) label = 'Мелкий';
+        if (value >= 18) label = 'Крупный';
+        document.getElementById('fontSizeValue').textContent = label;
+    }
+
+    // Сохранение настроек
+    function saveSettings() {
+        try {
+            localStorage.setItem('talkifySettings', JSON.stringify(currentSettings));
             showNotification('Настройки успешно сохранены!', 'success');
 
-            // Отправляем на сервер
-            fetch('/update-settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(currentSettings)
-            }).catch(console.error);
-        }
+            // Применяем настройки ко всем страницам
+            applySettingsToAllPages();
 
-        // Сброс настроек
-        function resetSettings() {
-            if (confirm('Вы уверены, что хотите сбросить все настройки?')) {
-                localStorage.removeItem('appSettings');
-                currentSettings = {
-                    theme: 'dark',
-                    colorScheme: 'purple',
-                    fontSize: 16,
-                    notifications: true,
-                    sounds: true,
-                    autostart: false,
-                    sync: true
-                };
-                applySettings();
-                showNotification('Настройки сброшены к значениям по умолчанию', 'success');
+        } catch (e) {
+            console.error('Error saving settings:', e);
+            showNotification('Ошибка сохранения настроек', 'error');
+        }
+    }
+
+    // Применяем настройки ко всем страницам
+    function applySettingsToAllPages() {
+        // Сохраняем время последнего обновления
+        localStorage.setItem('settingsLastUpdated', Date.now());
+    }
+
+    // Сброс настроек
+    function resetSettings() {
+        if (confirm('Вы уверены, что хотите сбросить все настройки?')) {
+            currentSettings = {...defaultSettings};
+            localStorage.removeItem('talkifySettings');
+            applySettings();
+            showNotification('Настройки сброшены к значениям по умолчанию', 'success');
+        }
+    }
+
+    // Показать уведомление
+    function showNotification(message, type = 'info') {
+        // Удаляем старое уведомление если есть
+        const oldNotification = document.querySelector('.custom-notification');
+        if (oldNotification) oldNotification.remove();
+
+        const notification = document.createElement('div');
+        notification.className = 'custom-notification';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            background: ${type === 'success' ? 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' :
+                         type === 'error' ? 'linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%)' :
+                         'linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%)'};
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            box-shadow: var(--shadow);
+            animation: slideInRight 0.3s ease;
+        `;
+        notification.textContent = message;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+
+    // Инициализация
+    document.addEventListener('DOMContentLoaded', function() {
+        // Добавляем стили для анимаций
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
             }
-        }
+            @keyframes slideOutRight {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
 
-        // Показать уведомление
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 15px 20px;
-                border-radius: 10px;
-                background: ${type === 'success' ? 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' : 'linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%)'};
-                color: white;
-                font-weight: 500;
-                z-index: 10000;
-                box-shadow: var(--shadow);
-                animation: slideInRight 0.3s ease;
-            `;
-            notification.textContent = message;
+        loadSettings();
 
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.style.animation = 'slideOutRight 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-
-        // Инициализация
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSettings();
-
-            // Обработчики для темы
-            document.querySelectorAll('.theme-option').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currentSettings.theme = btn.dataset.theme;
-                    applySettings();
-                });
+        // Обработчики для темы
+        document.querySelectorAll('.theme-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSettings.theme = btn.dataset.theme;
+                applySettings();
             });
+        });
 
-            // Обработчики для цветов
-            document.querySelectorAll('.color-option').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currentSettings.colorScheme = btn.dataset.color;
-                    applySettings();
-                });
+        // Обработчики для цветов
+        document.querySelectorAll('.color-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSettings.colorScheme = btn.dataset.color;
+                applySettings();
             });
+        });
 
-            // Обработчик для размера шрифта
-            document.getElementById('fontSizeSlider').addEventListener('input', function() {
+        // Обработчик для размера шрифта
+        const fontSizeSlider = document.getElementById('fontSizeSlider');
+        if (fontSizeSlider) {
+            fontSizeSlider.addEventListener('input', function() {
                 currentSettings.fontSize = parseInt(this.value);
                 applySettings();
             });
+        }
 
-            // Обработчики для чекбоксов
-            document.querySelectorAll('.checkbox-item').forEach(item => {
-                item.addEventListener('click', function() {
-                    const setting = this.dataset.setting;
-                    const checkbox = this.querySelector('.checkbox');
+        // Обработчики для чекбоксов
+        document.querySelectorAll('.checkbox-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const setting = this.dataset.setting;
+                const checkbox = this.querySelector('.checkbox');
 
-                    checkbox.classList.toggle('checked');
-                    currentSettings[setting] = checkbox.classList.contains('checked');
-                });
+                checkbox.classList.toggle('checked');
+                currentSettings[setting] = checkbox.classList.contains('checked');
             });
-
-            // Добавляем стили для анимаций
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes slideInRight {
-                    from { transform: translateX(100%); opacity: 0; }
-                    to { transform: translateX(0); opacity: 1; }
-                }
-                @keyframes slideOutRight {
-                    from { transform: translateX(0); opacity: 1; }
-                    to { transform: translateX(100%); opacity: 0; }
-                }
-            `;
-            document.head.appendChild(style);
         });
-    </script>
+    });
+</script>
 </body>
 </html>
