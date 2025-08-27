@@ -6,10 +6,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            --success-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --accent-color: #4facfe;
+            --success-color: #43e97b;
             --dark-bg: #0f0f1a;
             --darker-bg: #0a0a12;
             --card-bg: rgba(255, 255, 255, 0.08);
@@ -17,9 +17,15 @@
             --text-primary: #ffffff;
             --text-secondary: rgba(255, 255, 255, 0.7);
             --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --font-size: 16px;
         }
 
+        /* Light theme */
         [data-theme="light"] {
+            --primary-color: #4f46e5;
+            --secondary-color: #7c3aed;
+            --accent-color: #0ea5e9;
+            --success-color: #10b981;
             --dark-bg: #f8f9fa;
             --darker-bg: #e9ecef;
             --card-bg: rgba(255, 255, 255, 0.95);
@@ -29,11 +35,61 @@
             --shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         }
 
+        /* Color schemes */
+        [data-color-scheme="purple"] {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+        }
+
+        [data-color-scheme="blue"] {
+            --primary-color: #4facfe;
+            --secondary-color: #00f2fe;
+        }
+
+        [data-color-scheme="green"] {
+            --primary-color: #43e97b;
+            --secondary-color: #38f9d7;
+        }
+
+        [data-color-scheme="orange"] {
+            --primary-color: #ff9a9e;
+            --secondary-color: #fad0c4;
+        }
+
+        [data-color-scheme="red"] {
+            --primary-color: #ff6b6b;
+            --secondary-color: #ee5a52;
+        }
+
+        [data-color-scheme="pink"] {
+            --primary-color: #ff6b9d;
+            --secondary-color: #ff8fab;
+        }
+
+        [data-color-scheme="sunset"] {
+            --primary-color: #fa709a;
+            --secondary-color: #fee140;
+        }
+
+        [data-color-scheme="ocean"] {
+            --primary-color: #4facfe;
+            --secondary-color: #00f2fe;
+        }
+
+        .primary-gradient {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        }
+
+        .secondary-gradient {
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--success-color) 100%);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: var(--font-size);
         }
 
         body {
@@ -41,6 +97,7 @@
             color: var(--text-primary);
             min-height: 100vh;
             transition: all 0.3s ease;
+            line-height: 1.6;
         }
 
         .settings-container {
@@ -52,6 +109,7 @@
         .back-link {
             display: inline-flex;
             align-items: center;
+            gap: 8px;
             color: var(--text-secondary);
             text-decoration: none;
             font-size: 14px;
@@ -66,7 +124,7 @@
 
         .back-link:hover {
             color: var(--text-primary);
-            border-color: var(--text-primary);
+            border-color: var(--primary-color);
             transform: translateX(-5px);
         }
 
@@ -79,7 +137,7 @@
             font-size: 32px;
             font-weight: 700;
             margin-bottom: 10px;
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -127,13 +185,14 @@
             justify-content: center;
             font-size: 20px;
             margin-right: 15px;
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
         }
 
         .card-title {
             font-size: 20px;
             font-weight: 600;
+            color: var(--text-primary);
         }
 
         .theme-options {
@@ -158,8 +217,8 @@
         }
 
         .theme-option.active {
-            border-color: var(--text-primary);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 20%, transparent);
         }
 
         .theme-preview {
@@ -176,6 +235,7 @@
         .theme-name {
             font-size: 12px;
             font-weight: 500;
+            color: var(--text-primary);
         }
 
         .slider-container {
@@ -206,9 +266,9 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             cursor: pointer;
-            border: 2px solid white;
+            border: 2px solid var(--dark-bg);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
@@ -222,6 +282,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            cursor: pointer;
         }
 
         .checkbox {
@@ -234,10 +295,11 @@
             justify-content: center;
             cursor: pointer;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
 
         .checkbox.checked {
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             border-color: transparent;
         }
 
@@ -251,6 +313,7 @@
         .checkbox-label {
             color: var(--text-primary);
             font-size: 14px;
+            user-select: none;
         }
 
         .color-picker {
@@ -274,13 +337,13 @@
         }
 
         .color-option.active {
-            border-color: white;
-            box-shadow: 0 0 0 2px var(--text-primary);
+            border-color: var(--text-primary);
+            box-shadow: 0 0 0 2px var(--primary-color);
         }
 
         .btn-primary {
             padding: 15px 30px;
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -288,7 +351,7 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 20px color-mix(in srgb, var(--primary-color) 40%, transparent);
             display: block;
             margin: 40px auto;
             max-width: 200px;
@@ -296,7 +359,7 @@
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+            box-shadow: 0 8px 25px color-mix(in srgb, var(--primary-color) 60%, transparent);
         }
 
         .preview-section {
@@ -308,32 +371,35 @@
         }
 
         .preview-text {
-            font-size: var(--font-size, 16px);
             line-height: 1.6;
             color: var(--text-primary);
         }
 
-        /* Специфические стили для тем */
-        .theme-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .theme-blue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-        .theme-green { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-        .theme-orange { background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%); }
-        .theme-red { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%); }
-        .theme-pink { background: linear-gradient(135deg, #ff6b9d 0%, #ff8fab 100%); }
-        .theme-sunset { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-        .theme-ocean { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        /* Цветовые превью */
+        .color-preview-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .color-preview-blue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .color-preview-green { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+        .color-preview-orange { background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%); }
+        .color-preview-red { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%); }
+        .color-preview-pink { background: linear-gradient(135deg, #ff6b9d 0%, #ff8fab 100%); }
+        .color-preview-sunset { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+        .color-preview-ocean { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
 
         @media (max-width: 768px) {
             .settings-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .theme-options {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
+
             .color-picker {
                 grid-template-columns: repeat(3, 1fr);
+            }
+
+            .settings-title {
+                font-size: 28px;
             }
         }
     </style>
@@ -359,7 +425,7 @@
                     </div>
                     <h3 class="card-title">Тема оформления</h3>
                 </div>
-                
+
                 <div class="theme-options">
                     <div class="theme-option active" data-theme="dark">
                         <div class="theme-preview" style="background: #0f0f1a; color: white;">
@@ -373,12 +439,6 @@
                         </div>
                         <div class="theme-name">Светлая</div>
                     </div>
-                    <div class="theme-option" data-theme="auto">
-                        <div class="theme-preview" style="background: linear-gradient(45deg, #0f0f1a 50%, #f8f9fa 50%); color: white;">
-                            <i class="fas fa-adjust"></i>
-                        </div>
-                        <div class="theme-name">Авто</div>
-                    </div>
                 </div>
             </div>
 
@@ -390,16 +450,16 @@
                     </div>
                     <h3 class="card-title">Цветовая схема</h3>
                 </div>
-                
+
                 <div class="color-picker">
-                    <div class="color-option active theme-purple" data-color="purple"></div>
-                    <div class="color-option theme-blue" data-color="blue"></div>
-                    <div class="color-option theme-green" data-color="green"></div>
-                    <div class="color-option theme-orange" data-color="orange"></div>
-                    <div class="color-option theme-red" data-color="red"></div>
-                    <div class="color-option theme-pink" data-color="pink"></div>
-                    <div class="color-option theme-sunset" data-color="sunset"></div>
-                    <div class="color-option theme-ocean" data-color="ocean"></div>
+                    <div class="color-option active color-preview-purple" data-color="purple"></div>
+                    <div class="color-option color-preview-blue" data-color="blue"></div>
+                    <div class="color-option color-preview-green" data-color="green"></div>
+                    <div class="color-option color-preview-orange" data-color="orange"></div>
+                    <div class="color-option color-preview-red" data-color="red"></div>
+                    <div class="color-option color-preview-pink" data-color="pink"></div>
+                    <div class="color-option color-preview-sunset" data-color="sunset"></div>
+                    <div class="color-option color-preview-ocean" data-color="ocean"></div>
                 </div>
             </div>
 
@@ -411,7 +471,7 @@
                     </div>
                     <h3 class="card-title">Размер шрифта</h3>
                 </div>
-                
+
                 <div class="slider-container">
                     <div class="slider-label">
                         <span>Мелкий</span>
@@ -423,7 +483,7 @@
 
                 <div class="preview-section">
                     <p class="preview-text" id="fontPreview">
-                        Это пример текста для предварительного просмотра. Здесь вы можете увидеть, 
+                        Это пример текста для предварительного просмотра. Здесь вы можете увидеть,
                         как будет выглядеть выбранный размер шрифта.
                     </p>
                 </div>
@@ -437,57 +497,23 @@
                     </div>
                     <h3 class="card-title">Дополнительно</h3>
                 </div>
-                
+
                 <div class="checkbox-group">
-                    <div class="checkbox-item">
+                    <div class="checkbox-item" data-setting="notifications">
                         <div class="checkbox checked"></div>
                         <span class="checkbox-label">Показывать уведомления</span>
                     </div>
-                    <div class="checkbox-item">
+                    <div class="checkbox-item" data-setting="sounds">
                         <div class="checkbox checked"></div>
                         <span class="checkbox-label">Звуковые оповещения</span>
                     </div>
-                    <div class="checkbox-item">
+                    <div class="checkbox-item" data-setting="autostart">
                         <div class="checkbox"></div>
                         <span class="checkbox-label">Автозапуск приложения</span>
                     </div>
-                    <div class="checkbox-item">
+                    <div class="checkbox-item" data-setting="sync">
                         <div class="checkbox checked"></div>
                         <span class="checkbox-label">Синхронизация между устройствами</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Анимации -->
-            <div class="settings-card">
-                <div class="card-header">
-                    <div class="card-icon">
-                        <i class="fas fa-film"></i>
-                    </div>
-                    <h3 class="card-title">Анимации и эффекты</h3>
-                </div>
-                
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Минимальные</span>
-                        <span id="animationValue">Умеренные</span>
-                        <span>Максимальные</span>
-                    </div>
-                    <input type="range" min="0" max="2" value="1" class="slider" id="animationSlider">
-                </div>
-
-                <div class="checkbox-group">
-                    <div class="checkbox-item">
-                        <div class="checkbox checked"></div>
-                        <span class="checkbox-label">Параллакс эффекты</span>
-                    </div>
-                    <div class="checkbox-item">
-                        <div class="checkbox checked"></div>
-                        <span class="checkbox-label">Плавные переходы</span>
-                    </div>
-                    <div class="checkbox-item">
-                        <div class="checkbox"></div>
-                        <span class="checkbox-label">Эффекты наведения</span>
                     </div>
                 </div>
             </div>
@@ -495,17 +521,17 @@
             <!-- Сброс настроек -->
             <div class="settings-card">
                 <div class="card-header">
-                    <div class="card-icon" style="background: var(--secondary-gradient);">
+                    <div class="card-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
                         <i class="fas fa-trash-alt"></i>
                     </div>
                     <h3 class="card-title">Сброс настроек</h3>
                 </div>
-                
+
                 <p style="color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
                     Вернуть все настройки к значениям по умолчанию. Это действие нельзя отменить.
                 </p>
-                
-                <button class="btn-primary" style="background: var(--secondary-gradient);" onclick="resetSettings()">
+
+                <button class="btn-primary" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);" onclick="resetSettings()">
                     Сбросить настройки
                 </button>
             </div>
@@ -522,22 +548,23 @@
             theme: 'dark',
             colorScheme: 'purple',
             fontSize: 16,
-            animations: 1,
             notifications: true,
             sounds: true,
             autostart: false,
-            sync: true,
-            parallax: true,
-            smoothTransitions: true,
-            hoverEffects: false
+            sync: true
         };
 
         // Загрузка сохраненных настроек
         function loadSettings() {
             const saved = localStorage.getItem('appSettings');
             if (saved) {
-                currentSettings = {...currentSettings, ...JSON.parse(saved)};
-                applySettings();
+                try {
+                    const parsed = JSON.parse(saved);
+                    currentSettings = {...currentSettings, ...parsed};
+                    applySettings();
+                } catch (e) {
+                    console.error('Error loading settings:', e);
+                }
             }
         }
 
@@ -545,17 +572,17 @@
         function applySettings() {
             // Применяем тему
             document.documentElement.setAttribute('data-theme', currentSettings.theme);
-            
+            document.documentElement.setAttribute('data-color-scheme', currentSettings.colorScheme);
+
             // Применяем размер шрифта
             document.documentElement.style.setProperty('--font-size', currentSettings.fontSize + 'px');
             document.getElementById('fontSizeSlider').value = currentSettings.fontSize;
             updateFontSizeLabel();
-            
+
             // Обновляем UI
             updateThemeButtons();
             updateColorButtons();
             updateCheckboxes();
-            updateAnimationSlider();
         }
 
         // Обновление кнопок тем
@@ -574,13 +601,15 @@
 
         // Обновление чекбоксов
         function updateCheckboxes() {
-            // Реализация будет добавлена
-        }
-
-        // Обновление слайдера анимаций
-        function updateAnimationSlider() {
-            document.getElementById('animationSlider').value = currentSettings.animations;
-            updateAnimationLabel();
+            document.querySelectorAll('.checkbox-item').forEach(item => {
+                const setting = item.dataset.setting;
+                const checkbox = item.querySelector('.checkbox');
+                if (currentSettings[setting]) {
+                    checkbox.classList.add('checked');
+                } else {
+                    checkbox.classList.remove('checked');
+                }
+            });
         }
 
         // Обновление подписи размера шрифта
@@ -592,28 +621,21 @@
             document.getElementById('fontSizeValue').textContent = label;
         }
 
-        // Обновление подписи анимаций
-        function updateAnimationLabel() {
-            const value = currentSettings.animations;
-            const labels = ['Минимальные', 'Умеренные', 'Максимальные'];
-            document.getElementById('animationValue').textContent = labels[value];
-        }
-
         // Сохранение настроек
         function saveSettings() {
             localStorage.setItem('appSettings', JSON.stringify(currentSettings));
-            
+
             // Показываем уведомление об успехе
-            alert('Настройки успешно сохранены!');
-            
-            // Можно отправить на сервер
+            showNotification('Настройки успешно сохранены!', 'success');
+
+            // Отправляем на сервер
             fetch('/update-settings', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(currentSettings)
-            });
+            }).catch(console.error);
         }
 
         // Сброс настроек
@@ -624,18 +646,40 @@
                     theme: 'dark',
                     colorScheme: 'purple',
                     fontSize: 16,
-                    animations: 1,
                     notifications: true,
                     sounds: true,
                     autostart: false,
-                    sync: true,
-                    parallax: true,
-                    smoothTransitions: true,
-                    hoverEffects: false
+                    sync: true
                 };
                 applySettings();
-                alert('Настройки сброшены к значениям по умолчанию');
+                showNotification('Настройки сброшены к значениям по умолчанию', 'success');
             }
+        }
+
+        // Показать уведомление
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 10px;
+                background: ${type === 'success' ? 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' : 'linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%)'};
+                color: white;
+                font-weight: 500;
+                z-index: 10000;
+                box-shadow: var(--shadow);
+                animation: slideInRight 0.3s ease;
+            `;
+            notification.textContent = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
         }
 
         // Инициализация
@@ -664,19 +708,30 @@
                 applySettings();
             });
 
-            // Обработчик для анимаций
-            document.getElementById('animationSlider').addEventListener('input', function() {
-                currentSettings.animations = parseInt(this.value);
-                applySettings();
-            });
-
             // Обработчики для чекбоксов
-            document.querySelectorAll('.checkbox').forEach(checkbox => {
-                checkbox.addEventListener('click', function() {
-                    this.classList.toggle('checked');
-                    // Здесь можно добавить логику для конкретных настроек
+            document.querySelectorAll('.checkbox-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const setting = this.dataset.setting;
+                    const checkbox = this.querySelector('.checkbox');
+
+                    checkbox.classList.toggle('checked');
+                    currentSettings[setting] = checkbox.classList.contains('checked');
                 });
             });
+
+            // Добавляем стили для анимаций
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideInRight {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes slideOutRight {
+                    from { transform: translateX(0); opacity: 1; }
+                    to { transform: translateX(100%); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
         });
     </script>
 </body>
