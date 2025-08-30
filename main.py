@@ -4,11 +4,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTP
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
-import uuid
 import logging
 import hashlib
 import psycopg2
 from typing import Optional, Dict, List, AsyncGenerator
+import uuid
 
 # ======================
 # НАСТРОЙКА ПРИЛОЖЕНИЯ
@@ -45,22 +45,29 @@ ALTERNATE_USERNAMES = {
 # КЛАССЫ И ФУНКЦИИ
 # ======================
 
+# В раздел ConnectionManager добавьте:
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
         self.pending_calls: Dict[str, dict] = {}
         self.user_notifications: Dict[str, List[dict]] = {}
+        self.active_calls: Dict[str, dict] = {}  # Добавьте это
 
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        self.active_connections[user_id] = websocket
-        logger.info(f"User {user_id} connected. Active: {list(self.active_connections.keys())}")
+    # Добавьте методы для управления звонками
+    def add_active_call(self, call_id: str, caller_id: str, callee_id: str):
+        self.active_calls[call_id] = {
+            'caller_id': caller_id,
+            'callee_id': callee_id,
+            'status': 'active',
+            'participants': {caller_id, callee_id}
+        }
 
-        # Send pending notifications
-        if user_id in self.user_notifications:
-            for notification in self.user_notifications[user_id]:
-                await self.send_json(user_id, notification)
-            self.user_notifications[user_id] = []
+    def remove_active_call(self, call_id: str):
+        if call_id in self.active_calls:
+            del self.active_calls[call_id]
+
+    def get_active_call(self, call_id: str):
+        return self.active_calls.get(call_id)
 
     async def send_json(self, receiver_id: str, message: dict) -> bool:
         if receiver_id in self.active_connections:
@@ -570,6 +577,24 @@ async def profile_page(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/call/{call_id}", response_class=HTMLResponse)
+async def call_page(request: Request, call_id: str):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    # Проверяем, что пользователь является участником звонка
+    parts = call_id.split('_')
+    if user_id not in parts:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return templates.TemplateResponse("call.html", {
+        "request": request,
+        "call_id": call_id,
+        "user_id": user_id
+    })
+
+
 @app.get("/view-profile/{profile_id}", response_class=HTMLResponse)
 async def view_profile(request: Request, profile_id: int):
     # Проверка аутентификации текущего пользователя
@@ -599,6 +624,7 @@ async def view_profile(request: Request, profile_id: int):
             "is_own_profile": False
         }
     )
+
 
 @app.get("/chat/{user_id}", response_class=HTMLResponse)
 async def chat(request: Request, user_id: str):
@@ -779,6 +805,7 @@ async def settings_page(request: Request):
         "request": request,
         "user_id": user_id
     })
+
 
 
 @app.post("/update-settings")
