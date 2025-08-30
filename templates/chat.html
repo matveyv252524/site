@@ -22,6 +22,101 @@
             font-family: 'Inter', sans-serif;
         }
 
+        .call-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.call-btn {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.audio-call-btn {
+    background: var(--success-gradient);
+    color: white;
+}
+
+.video-call-btn {
+    background: var(--accent-gradient);
+    color: white;
+}
+
+.call-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.call-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Уведомления о звонках */
+.call-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--card-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    padding: 30px;
+    z-index: 1000;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.call-notification h3 {
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.call-notification p {
+    color: var(--text-secondary);
+    margin-bottom: 25px;
+}
+
+.call-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.call-action-btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.accept-call {
+    background: var(--success-gradient);
+    color: white;
+}
+
+.reject-call {
+    background: var(--secondary-gradient);
+    color: white;
+}
+
+.call-action-btn:hover {
+    transform: translateY(-2px);
+}
+
         body {
             background: var(--dark-bg);
             color: var(--text-primary);
@@ -93,6 +188,24 @@
         .search-box {
             position: relative;
         }
+
+        #chatContainer {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100vh;
+}
+
+#messagesContainer {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: rgba(15, 15, 26, 0.5);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
 
         .search-input {
             width: 100%;
@@ -517,26 +630,23 @@
 </div>
 
     <!-- Основной чат -->
-    <div class="chat-container" id="chatContainer" style="display: none;">
-        <div class="chat-header">
-            <div class="chat-user">
-                <div class="chat-avatar" id="currentContactAvatar"></div>
-                <div class="chat-user-info">
-                    <div class="chat-user-name" id="currentContactName"></div>
-                    <div class="chat-user-status" id="currentContactStatus">online</div>
-                </div>
-            </div>
-            <button class="call-btn" id="startCallBtn">📞</button>
-        </div>
-
-        <div class="messages-container" id="messagesContainer"></div>
-
-        <div class="message-form">
-            <textarea class="message-input" id="messageInput" placeholder="Введите сообщение..." rows="1"></textarea>
-            <button class="send-btn" id="sendMessageBtn">Отправить</button>
+<div class="chat-header">
+    <div class="chat-user">
+        <div class="chat-avatar" id="currentContactAvatar"></div>
+        <div class="chat-user-info">
+            <div class="chat-user-name" id="currentContactName"></div>
+            <div class="chat-user-status" id="currentContactStatus">online</div>
         </div>
     </div>
-
+    <div class="call-buttons">
+        <button class="call-btn audio-call-btn" id="startAudioCallBtn" title="Аудиозвонок">
+            📞
+        </button>
+        <button class="call-btn video-call-btn" id="startVideoCallBtn" title="Видеозвонок" disabled>
+            📹
+        </button>
+    </div>
+</div>
     <!-- Уведомление о входящем звонке -->
     <div id="incomingCallNotification" class="call-notification" style="display: none;">
         <h3>Входящий аудиозвонок</h3>
@@ -784,26 +894,30 @@
         }
 
         function showIncomingCall(from, callId) {
-            document.getElementById('incomingCallFrom').textContent = `От: ${from}`;
-            document.getElementById('incomingCallNotification').style.display = 'block';
+    const incomingCallFrom = document.getElementById('incomingCallFrom');
+    const incomingCallNotification = document.getElementById('incomingCallNotification');
 
-            document.getElementById('acceptCallBtn').onclick = () => {
-                document.getElementById('incomingCallNotification').style.display = 'none';
-                ws.send(JSON.stringify({
-                    type: "call_accept",
-                    call_id: callId
-                }));
-                window.location.href = `/call/${callId}`;
-            };
+    incomingCallFrom.textContent = `От: ${from}`;
+    incomingCallNotification.style.display = 'block';
 
-            document.getElementById('rejectCallBtn').onclick = () => {
-                document.getElementById('incomingCallNotification').style.display = 'none';
-                ws.send(JSON.stringify({
-                    type: "call_reject",
-                    call_id: callId
-                }));
-            };
-        }
+    document.getElementById('acceptCallBtn').onclick = () => {
+        incomingCallNotification.style.display = 'none';
+        ws.send(JSON.stringify({
+            type: "call_accept",
+            call_id: callId
+        }));
+        // Переходим на страницу звонка
+        window.location.href = `/call/${callId}?user_id=${userId}`;
+    };
+
+    document.getElementById('rejectCallBtn').onclick = () => {
+        incomingCallNotification.style.display = 'none';
+        ws.send(JSON.stringify({
+            type: "call_reject",
+            call_id: callId
+        }));
+    };
+}
 
         function showWaitingNotification(callId) {
             currentCallId = callId;
@@ -822,26 +936,34 @@
             clearTimeout(callTimeout);
         }
 
-        function startAudioCall() {
-            if (!currentContact) {
-                alert("Выберите контакт для звонка");
-                return;
-            }
+       ws.onmessage = function(event) {
+    try {
+        const data = JSON.parse(event.data);
+        console.log("Получено:", data);
 
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("Нет соединения");
-                connectWebSocket();
-                return;
-            }
-
-            ws.send(JSON.stringify({
-                type: "call_request",
-                to: currentContact,
-                is_audio_only: true
-            }));
-
-            showWaitingNotification(`${userId}_${currentContact}_${Date.now()}`);
+        if (data.type === "message") {
+            // ... существующий код ...
         }
+        else if (data.type === "call_incoming") {
+            showIncomingCall(data.from, data.call_id);
+        }
+        else if (data.type === "call_waiting") {
+            showWaitingNotification(data.call_id);
+        }
+        else if (data.type === "call_accepted") {
+            handleCallAccepted(data.call_id);
+        }
+        else if (data.type === "call_rejected") {
+            handleCallRejected(data.by);
+        }
+        else if (data.type === "notification") {
+            showNotification(data.message);
+        }
+
+    } catch (error) {
+        console.error("Ошибка парсинга сообщения:", error);
+    }
+};
 
         function cancelCall() {
             if (currentCallId) {
@@ -944,6 +1066,7 @@
                         contact.style.display = 'flex';
                     } else {
                         contact.style.display = 'none';
+                        document.getElementById('startAudioCallBtn').addEventListener('click', startAudioCall);
                     }
                 });
             });
